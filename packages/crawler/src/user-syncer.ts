@@ -57,18 +57,47 @@ export async function syncUser(
 
   let after: string | undefined = undefined;
   let pagesScanned = 0;
+  let rawPostsSeen = 0;
   let postsFound = 0;
   let completionsFound = 0;
   let reachedOld = false;
+  let exhausted = false;
+
   const maxPages = getMaxPages();
   const cutoff = user.lastSyncedAt ? user.lastSyncedAt.getTime() : 0;
 
   try {
     while (pagesScanned < maxPages && !reachedOld) {
-      const { posts, after: nextAfter } = await client.fetchUserSubmitted(username, after);
-      pagesScanned++;
+      const page = await client.fetchUserSubmitted(username, after);
+      const { posts, after: nextAfter, rawCount, matchedCount } = page;
 
-      if (posts.length === 0) break;
+      pagesScanned++;
+      rawPostsSeen += rawCount;
+
+      console.log(
+        `[user-syncer] page ${pagesScanned}/${maxPages} u/${username}; ` +
+          `raw=${rawCount}; matches=${matchedCount}; processed=${postsFound}; ` +
+          `next=${nextAfter ?? "none"}`
+      );
+
+      /**
+       * Important:
+       * posts is already filtered to the target subreddit.
+       *
+       * An empty filtered page does NOT mean Reddit is exhausted.
+       * It can simply mean this user's latest 100 submitted posts were in other subreddits.
+       *
+       * Only stop when Reddit gives us no next cursor.
+       */
+      if (posts.length === 0) {
+        if (!nextAfter) {
+          exhausted = true;
+          break;
+        }
+
+        after = nextAfter;
+        continue;
+      }
 
       for (const post of posts) {
         if (resolvedMode === "incremental" && post.created_utc * 1000 <= cutoff) {
@@ -81,7 +110,22 @@ export async function syncUser(
         completionsFound += newCompletions;
       }
 
-      if (!nextAfter) break;
+      await prisma.crawlRun.update({
+        where: { id: crawlRun.id },
+        data: {
+          pagesScanned,
+          postsFound,
+          completionsDetected: completionsFound,
+        },
+      });
+
+      if (reachedOld) break;
+
+      if (!nextAfter) {
+        exhausted = true;
+        break;
+      }
+
       after = nextAfter;
     }
 
@@ -102,7 +146,10 @@ export async function syncUser(
     });
 
     console.log(
-      `[user-syncer] done u/${username} — ${postsFound} posts, ${completionsFound} completions`
+      `[user-syncer] done u/${username} — ` +
+        `${postsFound} matching posts, ${completionsFound} completions, ` +
+        `${rawPostsSeen} raw posts seen, ${pagesScanned} pages, ` +
+        `exhausted=${exhausted}, reachedOld=${reachedOld}`
     );
 
     return { postsProcessed: postsFound, completionsFound };
@@ -111,10 +158,12 @@ export async function syncUser(
       where: { username },
       data: { syncStatus: "stale" },
     });
+
     await prisma.crawlRun.update({
       where: { id: crawlRun.id },
       data: { status: "failed", completedAt: new Date(), error: String(err) },
     });
+
     throw err;
   }
 }

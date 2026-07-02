@@ -14,10 +14,27 @@ export interface RedditPost {
   created_utc: number;
 }
 
+export interface RedditListingPage {
+  posts: RedditPost[];
+  after: string | null;
+
+  /**
+   * Number of raw Reddit listing children returned before any normalisation/filtering.
+   * Useful for distinguishing "Reddit has no more posts" from
+   * "this page had no posts matching our target subreddit".
+   */
+  rawCount: number;
+
+  /**
+   * Number of usable posts after normalisation and subreddit filtering.
+   */
+  matchedCount: number;
+}
+
 export interface RedditListingClient {
   readonly targetSubreddit: string;
-  fetchSubredditNew(after?: string): Promise<{ posts: RedditPost[]; after: string | null }>;
-  fetchUserSubmitted(username: string, after?: string): Promise<{ posts: RedditPost[]; after: string | null }>;
+  fetchSubredditNew(after?: string): Promise<RedditListingPage>;
+  fetchUserSubmitted(username: string, after?: string): Promise<RedditListingPage>;
 }
 
 interface RedditListing {
@@ -75,6 +92,7 @@ export class RedditClient implements RedditListingClient {
 
   private async request<T>(url: string): Promise<T> {
     let attempts = 0;
+
     while (attempts < 5) {
       await this.limiter.throttle();
       attempts++;
@@ -108,7 +126,7 @@ export class RedditClient implements RedditListingClient {
     throw new Error(`Gave up after ${attempts} attempts for ${url}`);
   }
 
-  async fetchSubredditNew(after?: string): Promise<{ posts: RedditPost[]; after: string | null }> {
+  async fetchSubredditNew(after?: string): Promise<RedditListingPage> {
     const params = new URLSearchParams({ limit: "100", raw_json: "1" });
     if (after) params.set("after", after);
 
@@ -116,18 +134,20 @@ export class RedditClient implements RedditListingClient {
       `https://www.reddit.com/r/${encodeURIComponent(this.subreddit)}/new.json?${params}`
     );
 
+    const rawChildren = listing.data.children;
+    const posts = rawChildren
+      .map((child) => normalisePost(child.data))
+      .filter((post): post is RedditPost => Boolean(post));
+
     return {
-      posts: listing.data.children
-        .map((child) => normalisePost(child.data))
-        .filter((post): post is RedditPost => Boolean(post)),
+      posts,
       after: listing.data.after,
+      rawCount: rawChildren.length,
+      matchedCount: posts.length,
     };
   }
 
-  async fetchUserSubmitted(
-    username: string,
-    after?: string
-  ): Promise<{ posts: RedditPost[]; after: string | null }> {
+  async fetchUserSubmitted(username: string, after?: string): Promise<RedditListingPage> {
     const params = new URLSearchParams({ limit: "100", raw_json: "1" });
     if (after) params.set("after", after);
 
@@ -135,14 +155,20 @@ export class RedditClient implements RedditListingClient {
       `https://www.reddit.com/user/${encodeURIComponent(username)}/submitted.json?${params}`
     );
 
+    const rawChildren = listing.data.children;
+    const normalisedPosts = rawChildren
+      .map((child) => normalisePost(child.data))
+      .filter((post): post is RedditPost => Boolean(post));
+
+    const posts = normalisedPosts.filter((post) =>
+      post.permalink.toLowerCase().includes(`/r/${this.subreddit.toLowerCase()}/`)
+    );
+
     return {
-      posts: listing.data.children
-        .map((child) => normalisePost(child.data))
-        .filter((post): post is RedditPost => {
-          if (!post) return false;
-          return post.permalink.toLowerCase().includes(`/r/${this.subreddit.toLowerCase()}/`);
-        }),
+      posts,
       after: listing.data.after,
+      rawCount: rawChildren.length,
+      matchedCount: posts.length,
     };
   }
 }

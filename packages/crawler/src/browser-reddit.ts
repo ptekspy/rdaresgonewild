@@ -1,4 +1,4 @@
-import type { RedditListingClient, RedditPost, RawRedditPost } from "./reddit.js";
+import type { RedditListingClient, RedditListingPage, RedditPost, RawRedditPost } from "./reddit.js";
 import { normalisePost } from "./reddit.js";
 import { RateLimiter } from "./rate-limiter.js";
 
@@ -65,37 +65,45 @@ export class BrowserRedditClient implements RedditListingClient {
     return this.subreddit;
   }
 
-  async fetchSubredditNew(after?: string): Promise<{ posts: RedditPost[]; after: string | null }> {
+  async fetchSubredditNew(after?: string): Promise<RedditListingPage> {
     const params = { limit: "100", raw_json: "1", after: after ?? "" };
     const listing = await this.browserFetchJson<BrowserListing>(
       `/r/${encodeURIComponent(this.subreddit)}/new.json?${toSearchParams(params)}`
     );
 
+    const rawChildren = listing.data.children;
+    const posts = rawChildren
+      .map((child) => normalisePost(child.data))
+      .filter((post): post is RedditPost => Boolean(post));
+
     return {
-      posts: listing.data.children
-        .map((child) => normalisePost(child.data))
-        .filter((post): post is RedditPost => Boolean(post)),
+      posts,
       after: listing.data.after,
+      rawCount: rawChildren.length,
+      matchedCount: posts.length,
     };
   }
 
-  async fetchUserSubmitted(
-    username: string,
-    after?: string
-  ): Promise<{ posts: RedditPost[]; after: string | null }> {
+  async fetchUserSubmitted(username: string, after?: string): Promise<RedditListingPage> {
     const params = { limit: "100", raw_json: "1", after: after ?? "" };
     const listing = await this.browserFetchJson<BrowserListing>(
       `/user/${encodeURIComponent(username)}/submitted.json?${toSearchParams(params)}`
     );
 
+    const rawChildren = listing.data.children;
+    const normalisedPosts = rawChildren
+      .map((child) => normalisePost(child.data))
+      .filter((post): post is RedditPost => Boolean(post));
+
+    const posts = normalisedPosts.filter((post) =>
+      post.permalink.toLowerCase().includes(`/r/${this.subreddit.toLowerCase()}/`)
+    );
+
     return {
-      posts: listing.data.children
-        .map((child) => normalisePost(child.data))
-        .filter((post): post is RedditPost => {
-          if (!post) return false;
-          return post.permalink.toLowerCase().includes(`/r/${this.subreddit.toLowerCase()}/`);
-        }),
+      posts,
       after: listing.data.after,
+      rawCount: rawChildren.length,
+      matchedCount: posts.length,
     };
   }
 
