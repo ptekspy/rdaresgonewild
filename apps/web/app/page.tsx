@@ -48,7 +48,7 @@ export default async function HomePage() {
         <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-orange-500/[0.18] blur-3xl" />
         <div className="absolute -bottom-24 left-10 h-72 w-72 rounded-full bg-pink-600/20 blur-3xl" />
 
-        <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="relative z-10 space-y-7">
             <span className="rdgw-kicker">Unofficial r/daresgonewild tracker</span>
             <div className="space-y-5">
@@ -67,6 +67,15 @@ export default async function HomePage() {
                 View leaderboard
               </Link>
             </div>
+          </div>
+
+          <div className="pointer-events-none relative z-0 hidden min-h-[28rem] lg:block" aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/Hero-Pinup-Cropped.png"
+              alt=""
+              className="absolute bottom-[-3.25rem] right-[-1rem] h-[34rem] w-auto max-w-none drop-shadow-[0_28px_70px_rgba(249,4,124,0.25)] xl:right-2 xl:h-[36rem]"
+            />
           </div>
         </div>
       </section>
