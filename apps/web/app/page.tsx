@@ -26,7 +26,7 @@ async function getTopCreators(limit = 10) {
     orderBy: { _count: { dareSlug: "desc" } },
     take: limit,
   });
-  return rows.map((r, i) => ({ rank: i + 1, username: r.username, count: r._count.dareSlug }));
+  return rows.map((r: { username: any; _count: { dareSlug: any; }; }, i: number) => ({ rank: i + 1, username: r.username, count: r._count.dareSlug }));
 }
 
 function fmtNumber(n: number) {
@@ -86,7 +86,7 @@ export default async function HomePage() {
           {topCreators.length === 0 && (
             <p className="px-4 py-8 text-center text-zinc-500 text-sm">No data yet — check back after the first crawl.</p>
           )}
-          {topCreators.map((c) => (
+          {topCreators.map((c: { username: any; rank: any; count: any; }) => (
             <Link
               key={c.username}
               href={`/u/${c.username}`}
@@ -106,7 +106,7 @@ export default async function HomePage() {
         <h2 className="text-xl font-bold">📋 The 13 Levels</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {Object.entries(LEVEL_LABELS).map(([key, label], i) => {
-            const count = PLAYBOOK_DARES.filter((d) => d.level === key).length;
+            const count = PLAYBOOK_DARES.filter((d: { level: string; }) => d.level === key).length;
             return (
               <div key={key} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm">
                 <span className="text-zinc-500 font-mono mr-2">L{i + 1}</span>
