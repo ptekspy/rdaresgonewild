@@ -22,7 +22,10 @@ export default async function UserProfilePage({ params }: PageProps) {
 
   const user = await db.dgwUser.findUnique({ where: { username } });
 
-  const [playbookCompletions, communityCompletions] = await Promise.all([
+  const [playbookCompletions, communityCompletions]: [
+    { dareSlug: string; detectedAt: Date }[],
+    { id: number; darerUsername: string; detectedAt: Date }[]
+  ] = await Promise.all([
     db.playbookCompletion.findMany({
       where: { username, ...NOT_REJECTED },
       orderBy: { detectedAt: "desc" },
@@ -33,7 +36,7 @@ export default async function UserProfilePage({ params }: PageProps) {
     }),
   ]);
 
-  const completedSlugs = new Set(playbookCompletions.map((c: { dareSlug: string; }) => c.dareSlug));
+  const completedSlugs = new Set(playbookCompletions.map((c) => c.dareSlug));
   const totalDares = PLAYBOOK_DARES.length;
   const completedCount = completedSlugs.size;
   const pct = Math.round((completedCount / totalDares) * 100);
