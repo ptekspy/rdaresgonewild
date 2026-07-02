@@ -63,9 +63,12 @@ importers:
       '@opennextjs/cloudflare':
         specifier: ^1.20.1
         version: 1.20.1(next@15.5.20(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(wrangler@4.106.0)
-      '@rdgw/database':
-        specifier: workspace:*
-        version: link:../../packages/database
+      '@prisma/adapter-neon':
+        specifier: 6.19.3
+        version: 6.19.3
+      '@prisma/client':
+        specifier: ^6.0.0
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
       '@rdgw/playbook':
         specifier: workspace:*
         version: link:../../packages/playbook

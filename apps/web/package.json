@@ -12,9 +12,10 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@rdgw/database": "workspace:*",
-    "@rdgw/playbook": "workspace:*",
     "@opennextjs/cloudflare": "^1.20.1",
+    "@prisma/adapter-neon": "6.19.3",
+    "@prisma/client": "^6.0.0",
+    "@rdgw/playbook": "workspace:*",
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

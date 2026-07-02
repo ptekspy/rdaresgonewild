@@ -4,7 +4,7 @@ import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 initOpenNextCloudflareForDev();
 
 const config: NextConfig = {
-  transpilePackages: ["@rdgw/database", "@rdgw/playbook"],
+  transpilePackages: ["@rdgw/playbook"],
   serverExternalPackages: ["@prisma/client", ".prisma/client"],
   experimental: {
     serverActions: {

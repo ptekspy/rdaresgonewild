@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createCloudflarePrismaClient } from "@rdgw/database/cloudflare";
+import { PrismaNeonHTTP } from "@prisma/adapter-neon";
+import { PrismaClient } from "@prisma/client";
 
 function getDatabaseUrl() {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
@@ -20,5 +21,8 @@ export const getDb = cache(() => {
     throw new Error("DATABASE_URL is required for the web app");
   }
 
-  return createCloudflarePrismaClient(databaseUrl);
+  return new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    adapter: new PrismaNeonHTTP(databaseUrl, {}),
+  });
 });
