@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@rdgw/database";
 import { securityHeaders } from "@/lib/ads/http";
 import { sha256, verifyAdToken } from "@/lib/ads/tokens";
-import { assertSafeHttpsUrl } from "@/lib/ads/validation";
+import { assertSafeClickTargetUrl } from "@/lib/ads/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
 
   let targetUrl: URL;
   try {
-    targetUrl = assertSafeHttpsUrl(creative.targetUrl);
+    targetUrl = assertSafeClickTargetUrl(creative.targetUrl);
   } catch {
     return NextResponse.json(
       { ok: false, error: { code: "BAD_REQUEST", message: "Unsupported click target" } },
@@ -53,8 +53,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
     },
   });
 
-  return NextResponse.redirect(targetUrl, {
+  const headers = securityHeaders(origin);
+  headers.set("Location", targetUrl.toString());
+
+  return new NextResponse(null, {
     status: 302,
-    headers: securityHeaders(origin),
+    headers,
   });
 }

@@ -9,6 +9,11 @@ import {
   prisma,
 } from "./src/index";
 
+const HOUSE_AD_TARGET_URL =
+  "mailto:coderpaddy+rdgw@gmail.com" +
+  "?subject=Advertising%20on%20rdaresgonewild" +
+  "&body=Hi%20Paddy%2C%0D%0A%0D%0AI%27d%20like%20to%20advertise%20on%20rdaresgonewild.%0D%0A%0D%0ACompany%20or%20name%3A%0D%0AWebsite%3A%0D%0ABudget%20or%20dates%3A%0D%0A%0D%0AThanks!";
+
 const RDGW_PLACEMENTS = [
   { key: "homepage_top", label: "Homepage top", width: 970, height: 250 },
   { key: "homepage_after_stats", label: "Homepage after stats", width: 970, height: 250 },
@@ -88,7 +93,7 @@ async function upsertHouseCreative(campaignId: string) {
     headline: "Advertise here",
     body: "Reach NSFW Reddit creators and viewers across the Paid Politely network.",
     ctaText: "Contact us",
-    targetUrl: "https://paidpolitely.com/advertise",
+    targetUrl: HOUSE_AD_TARGET_URL,
     altText: "Advertise with Paid Politely",
     containsExplicitImage: false,
     requiresAgeGate: true,
