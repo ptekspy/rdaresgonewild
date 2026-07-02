@@ -18,7 +18,7 @@ export function getBotConfig() {
     userRecrawlMs: getIntegerEnv("CRAWLER_USER_RECRAWL_MS", 24 * 60 * 60 * 1000),
     idleSleepMs: getIntegerEnv("CRAWLER_IDLE_SLEEP_MS", 60 * 1000),
     scrollWaitMs: getIntegerEnv("CRAWLER_SCROLL_WAIT_MS", 1500),
-    scrollStableRounds: getIntegerEnv("CRAWLER_SCROLL_STABLE_ROUNDS", 20),
+    scrollStableRounds: getIntegerEnv("CRAWLER_SCROLL_STABLE_ROUNDS", 6),
     maxScrollsPerPage: getIntegerEnv("CRAWLER_MAX_SCROLLS_PER_PAGE", 10000),
   };
 }
