@@ -103,7 +103,7 @@ export default async function UserProfilePage({ params }: PageProps) {
           <h2 className="text-xl font-bold">🎯 Playbook Dares</h2>
           {Object.entries(LEVEL_LABELS).map(([levelKey, levelLabel]) => {
             const levelDares = PLAYBOOK_DARES.filter((d: { level: string; }) => d.level === levelKey);
-            const doneInLevel = levelDares.filter((d: { slug: unknown; }) => completedSlugs.has(d.slug));
+            const doneInLevel = levelDares.filter((d: { slug: string; }) => completedSlugs.has(d.slug));
             if (doneInLevel.length === 0) return null;
             return (
               <div key={levelKey} className="space-y-2">
