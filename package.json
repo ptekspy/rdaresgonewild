@@ -2,10 +2,11 @@
   "name": "rdaresgonewild",
   "private": true,
   "scripts": {
-    "build": "turbo build",
+    "build": "pnpm db:generate && turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
+    "postinstall": "pnpm db:generate",
     "db:generate": "pnpm --filter @rdgw/database db:generate",
     "db:push": "pnpm --filter @rdgw/database db:push"
   },

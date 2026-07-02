@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "pnpm --filter @rdgw/database db:generate && next build",
     "dev": "next dev --port 6790",
     "start": "next start --port 6790",
     "lint": "next lint",

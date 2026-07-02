@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "type-check": "tsc --noEmit",
     "dev": "tsc --watch",
     "db:generate": "prisma generate",
