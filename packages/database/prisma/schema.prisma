@@ -1,6 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x", "windows"]
 }
 
 datasource db {
@@ -127,6 +128,29 @@ model CrawlCursor {
   lastCursor  String?
   lastRunAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model BrowserCrawlJob {
+  id           String    @id @default(cuid())
+  dedupeKey    String    @unique
+  type         String
+  target       String
+  url          String
+  status       String    @default("queued")
+  priority     Int       @default(0)
+  scheduledFor DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  leaseUntil   DateTime?
+  attempts     Int       @default(0)
+  state        Json?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, scheduledFor, priority])
+  @@index([type, target])
+  @@index([leaseUntil])
 }
 
 // ─── Ads ─────────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ export interface HtmlImportResult {
   completionsFound: number;
   playbookCompletionsFound: number;
   communityCompletionsFound: number;
+  authors: string[];
 }
 
 type AttributeMap = Record<string, string>;
@@ -42,6 +43,9 @@ export type HtmlImportProgress =
 
 export interface HtmlImportOptions {
   batchSize?: number;
+  crawlRunType?: string;
+  target?: string;
+  subreddit?: string;
   onProgress?: (progress: HtmlImportProgress) => void;
 }
 
@@ -71,13 +75,23 @@ export async function importHtmlFile(
   filePath: string,
   options: HtmlImportOptions = {}
 ): Promise<HtmlImportResult> {
-  const batchSize = normaliseBatchSize(options.batchSize);
   options.onProgress?.({ phase: "reading", filePath });
-
   const html = await fs.readFile(filePath, "utf8");
-  const posts = parseDaresGoneWildHtml(html);
-  const target = path.basename(filePath);
+  return importHtmlString(html, {
+    ...options,
+    target: options.target ?? path.basename(filePath),
+  });
+}
+
+export async function importHtmlString(
+  html: string,
+  options: HtmlImportOptions = {}
+): Promise<HtmlImportResult> {
+  const batchSize = normaliseBatchSize(options.batchSize);
+  const target = options.target ?? "html_string";
+  const posts = filterBySubreddit(parseDaresGoneWildHtml(html), options.subreddit);
   const batches = chunk(posts, batchSize);
+  const authors = uniqueValues(posts.map((post) => post.author));
 
   options.onProgress?.({
     phase: "parsed",
@@ -88,7 +102,7 @@ export async function importHtmlFile(
 
   const crawlRun = await prisma.crawlRun.create({
     data: {
-      type: "html_import",
+      type: options.crawlRunType ?? "html_import",
       target,
       pagesScanned: 1,
       postsFound: posts.length,
@@ -146,6 +160,7 @@ export async function importHtmlFile(
       completionsFound,
       playbookCompletionsFound,
       communityCompletionsFound,
+      authors,
     };
     options.onProgress?.({ phase: "completed", result });
     return result;
@@ -176,8 +191,14 @@ async function importPostBatch(posts: RedditPost[]): Promise<ImportBatchResult> 
       skipDuplicates: true,
     });
 
+    const existingPostIds = await fetchPostIds(
+      posts.map((post) => post.id),
+      (query) => tx.$queryRaw<PostIdRow[]>(query)
+    );
+    const newPosts = posts.filter((post) => !existingPostIds.has(post.id));
+
     await incrementUserPostCounts(
-      new Map(countBy(posts, (post) => post.author)),
+      new Map(countBy(newPosts, (post) => post.author)),
       (query) => tx.$executeRaw(query)
     );
     await upsertPosts(posts, (query) => tx.$executeRaw(query));
@@ -520,6 +541,12 @@ function parseFloatNumber(value?: string) {
 
 function absolutizeRedditUrl(value: string) {
   return value.startsWith("http") ? value : `https://www.reddit.com${value}`;
+}
+
+function filterBySubreddit(posts: RedditPost[], subreddit?: string) {
+  if (!subreddit) return posts;
+  const needle = `/r/${subreddit.toLowerCase()}/`;
+  return posts.filter((post) => post.permalink.toLowerCase().includes(needle));
 }
 
 function normaliseBatchSize(value: number | undefined) {
