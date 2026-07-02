@@ -4,9 +4,21 @@ export type BrowserCrawlJobType = "subreddit_new_hourly" | "subreddit_sort_daily
 
 const JOB_LEASE_MS = 30 * 60 * 1000;
 
+let forcedSubredditBootstrapQueued = false;
+
 export function getIntegerEnv(name: string, fallback: number) {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+export function getBooleanEnv(name: string, fallback = false) {
+  const value = process.env[name]?.trim().toLowerCase();
+
+  if (!value) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(value)) return true;
+  if (["0", "false", "no", "n", "off"].includes(value)) return false;
+
+  return fallback;
 }
 
 export function getBotConfig() {
@@ -21,6 +33,17 @@ export function getBotConfig() {
     scrollWaitMs: getIntegerEnv("CRAWLER_SCROLL_WAIT_MS", 1500),
     scrollStableRounds: getIntegerEnv("CRAWLER_SCROLL_STABLE_ROUNDS", 6),
     maxScrollsPerPage: getIntegerEnv("CRAWLER_MAX_SCROLLS_PER_PAGE", 10000),
+
+    /**
+     * If true, the bot force-queues all subreddit checks once after startup,
+     * even if they ran recently.
+     *
+     * This guarantees the startup order is:
+     * 1. subreddit new
+     * 2. subreddit best/hot/top_day
+     * 3. user profile filler jobs
+     */
+    forceSubredditBeforeUsers: getBooleanEnv("CRAWLER_FORCE_SUBREDDIT_BEFORE_USERS", true),
   };
 }
 
@@ -42,27 +65,24 @@ export async function recoverExpiredJobs() {
 export async function ensureDueJobs() {
   const config = getBotConfig();
   const now = new Date();
-  const base = `https://www.reddit.com/r/${config.subreddit}`;
+  const subredditJobs = getSubredditJobDefinitions(config.subreddit);
 
-  await ensureRecurringJob({
-    type: "subreddit_new_hourly",
-    target: config.subreddit,
-    url: `${base}/new/`,
-    priority: 100,
-    intervalMs: config.newIntervalMs,
-  });
+  const forceSubredditNow = config.forceSubredditBeforeUsers && !forcedSubredditBootstrapQueued;
 
-  for (const sort of [
-    { target: `${config.subreddit}:best`, url: `${base}/best/` },
-    { target: `${config.subreddit}:hot`, url: `${base}/hot/` },
-    { target: `${config.subreddit}:top_day`, url: `${base}/top/?t=day` },
-  ]) {
+  if (forceSubredditNow) {
+    forcedSubredditBootstrapQueued = true;
+
+    console.log(
+      "[crawler-jobs] CRAWLER_FORCE_SUBREDDIT_BEFORE_USERS=true; " +
+        "forcing all subreddit checks before user jobs",
+    );
+  }
+
+  for (const job of subredditJobs) {
     await ensureRecurringJob({
-      type: "subreddit_sort_daily",
-      target: sort.target,
-      url: sort.url,
-      priority: 80,
-      intervalMs: config.dailySortIntervalMs,
+      ...job,
+      intervalMs: job.type === "subreddit_new_hourly" ? config.newIntervalMs : config.dailySortIntervalMs,
+      forceNow: forceSubredditNow,
     });
   }
 
@@ -92,6 +112,37 @@ export async function ensureDueJobs() {
   for (const user of users) {
     await queueUserJob(user.username, now);
   }
+}
+
+function getSubredditJobDefinitions(subreddit: string) {
+  const base = `https://www.reddit.com/r/${subreddit}`;
+
+  return [
+    {
+      type: "subreddit_new_hourly" as const,
+      target: subreddit,
+      url: `${base}/new/`,
+      priority: 100,
+    },
+    {
+      type: "subreddit_sort_daily" as const,
+      target: `${subreddit}:best`,
+      url: `${base}/best/`,
+      priority: 80,
+    },
+    {
+      type: "subreddit_sort_daily" as const,
+      target: `${subreddit}:hot`,
+      url: `${base}/hot/`,
+      priority: 80,
+    },
+    {
+      type: "subreddit_sort_daily" as const,
+      target: `${subreddit}:top_day`,
+      url: `${base}/top/?t=day`,
+      priority: 80,
+    },
+  ];
 }
 
 async function hasDueSubredditJob() {
@@ -197,23 +248,35 @@ async function ensureRecurringJob(input: {
   url: string;
   priority: number;
   intervalMs: number;
+  forceNow?: boolean;
 }) {
+  const now = new Date();
+
   const existing = await prisma.browserCrawlJob.findUnique({
     where: { dedupeKey: dedupeKey(input.type, input.target) },
   });
 
   if (!existing) {
-    await upsertJob({ ...input, scheduledFor: new Date(), forceReschedule: true });
+    await upsertJob({
+      ...input,
+      scheduledFor: now,
+      forceReschedule: true,
+    });
     return;
   }
 
-  if (existing.status !== "running" && existing.scheduledFor <= new Date()) {
+  if (existing.status === "running") {
+    return;
+  }
+
+  if (input.forceNow || existing.scheduledFor <= now) {
     await prisma.browserCrawlJob.update({
       where: { id: existing.id },
       data: {
         status: "queued",
         url: input.url,
         priority: input.priority,
+        scheduledFor: input.forceNow ? now : existing.scheduledFor,
       },
     });
   }
