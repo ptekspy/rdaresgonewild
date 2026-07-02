@@ -33,7 +33,7 @@ export default async function UserProfilePage({ params }: PageProps) {
     }),
   ]);
 
-  const completedSlugs = new Set(playbookCompletions.map((c: { dareSlug: any; }) => c.dareSlug));
+  const completedSlugs = new Set(playbookCompletions.map((c: { dareSlug: string; }) => c.dareSlug));
   const totalDares = PLAYBOOK_DARES.length;
   const completedCount = completedSlugs.size;
   const pct = Math.round((completedCount / totalDares) * 100);
