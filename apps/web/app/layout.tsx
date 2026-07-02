@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head><meta name="apple-mobile-web-app-title" content="r/DGW" /></head>
       <body className="min-h-screen flex flex-col">
         <header className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur sticky top-0 z-40">
           <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
