@@ -8,7 +8,19 @@
     "type-check": "turbo type-check",
     "postinstall": "pnpm db:generate",
     "db:generate": "pnpm --filter @rdgw/database db:generate",
-    "db:push": "pnpm --filter @rdgw/database db:push"
+    "db:push": "pnpm --filter @rdgw/database db:push",
+    
+    "crawler:build": "pnpm --filter @rdgw/crawler build",
+
+    "crawler:scan": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler scan",
+    "crawler:backfill": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler backfill:subreddit",
+    "crawler:user": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler scan:user --",
+    "crawler:worker": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler worker",
+
+    "crawler:scan:browser": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler scan:browser",
+    "crawler:backfill:browser": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler backfill:browser",
+    "crawler:user:browser": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler scan:user:browser --",
+    "crawler:worker:browser": "pnpm --filter @rdgw/crawler build && pnpm --filter @rdgw/crawler worker:browser"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

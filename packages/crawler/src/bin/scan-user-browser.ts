@@ -1,12 +1,12 @@
 import { prisma } from "@rdgw/database";
-import { RedditClient } from "../reddit.js";
+import { BrowserRedditClient } from "../browser-reddit.js";
 import { syncUser, type SyncMode } from "../user-syncer.js";
 import { getCrawlerRpm, loadEnvFiles } from "./env.js";
 
 loadEnvFiles();
 
 function usage() {
-  console.error("Usage: pnpm --filter @rdgw/crawler scan:user -- <username> [full|incremental|auto]");
+  console.error("Usage: pnpm --filter @rdgw/crawler scan:user:browser -- <username> [full|incremental|auto]");
 }
 
 async function main() {
@@ -26,8 +26,12 @@ async function main() {
     return;
   }
 
-  const client = RedditClient.fromEnv(getCrawlerRpm());
-  await syncUser(username, client, mode);
+  const client = BrowserRedditClient.fromEnv(getCrawlerRpm());
+  try {
+    await syncUser(username, client, mode);
+  } finally {
+    await client.close();
+  }
 }
 
 main()

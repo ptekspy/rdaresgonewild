@@ -14,10 +14,17 @@
     "build": "tsc",
     "type-check": "tsc --noEmit",
     "dev": "tsc --watch",
+
     "scan": "node dist/bin/scan.js",
+    "backfill:subreddit": "node dist/bin/backfill-subreddit.js",
     "scan:user": "node dist/bin/scan-user.js",
     "scan:html": "node dist/bin/scan-html.js",
-    "worker": "node dist/bin/worker.js"
+    "worker": "node dist/bin/worker.js",
+
+    "scan:browser": "node dist/bin/scan-browser.js",
+    "backfill:browser": "node dist/bin/backfill-browser.js",
+    "scan:user:browser": "node dist/bin/scan-user-browser.js",
+    "worker:browser": "node dist/bin/worker-browser.js"
   },
   "dependencies": {
     "@rdgw/database": "workspace:*",

@@ -6,7 +6,7 @@ const DARED_BY_PATTERN = /dared\s*by/i;
 const PLAYBOOK_PATTERN = /playbook/i;
 const DARER_PATTERN = /\bu\/([A-Za-z0-9_-]{3,20})\b/gi;
 const USERNAME_PATTERN = "[A-Za-z0-9_-]{3,20}";
-const QUOTED_USERNAME_PATTERN = `[\"'“”‘’]?(${USERNAME_PATTERN})[\"'“”‘’]?`;
+const QUOTED_USERNAME_PATTERN = `["'“”‘’]?(${USERNAME_PATTERN})["'“”‘’]?`;
 const DARER_CONTEXT_PATTERNS = [
   new RegExp(`\\bdared\\s+by\\s+(?:[ur]\\s*/\\s*)?${QUOTED_USERNAME_PATTERN}`, "gi"),
   new RegExp(
@@ -16,6 +16,7 @@ const DARER_CONTEXT_PATTERNS = [
   ),
   new RegExp(`\\b(?:by|for|from)\\s+(?:you\\s+)?${QUOTED_USERNAME_PATTERN}\\b`, "gi"),
 ];
+
 const NON_USER_DARERS = new Set([
   "a",
   "all",
@@ -53,7 +54,6 @@ export function detectDareType(post: RedditPost): DetectionResult {
 
   const fullText = `${post.title} ${post.selftext}`;
 
-  // Try playbook match first
   const matched = matchPlaybookDare(fullText);
   if (matched) {
     return {
@@ -72,12 +72,11 @@ export function detectDareType(post: RedditPost): DetectionResult {
   if (darers.length > 0) {
     return {
       type: "community",
-      darerUsername: darers[0], // first mention
+      darerUsername: darers[0],
       confidence: 0.9,
     };
   }
 
-  // Has "Dared by" flair but couldn't identify specifics
   return { type: "none", confidence: 0 };
 }
 
@@ -113,6 +112,10 @@ function normaliseUsername(value: string | undefined) {
   return /^[A-Za-z0-9_-]{3,20}$/.test(username) ? username : null;
 }
 
+function isUsableAuthor(author: string) {
+  return /^[A-Za-z0-9_-]{3,20}$/.test(author);
+}
+
 /**
  * Upsert a DgwPost and DgwUser, then create completion records if applicable.
  * Returns the number of new completions created.
@@ -122,23 +125,31 @@ export async function processPost(
   prisma: typeof prismaClient,
   crawlRunId?: string
 ): Promise<number> {
+  if (!isUsableAuthor(post.author)) return 0;
+
   const createdAtReddit = new Date(post.created_utc * 1000);
 
-  // Upsert user
-  await prisma.dgwUser.upsert({
-    where: { username: post.author },
-    update: { postCount: { increment: 1 } },
-    create: { username: post.author },
+  const existingPost = await prisma.dgwPost.findUnique({
+    where: { redditId: post.id },
+    select: { id: true },
   });
 
-  // Upsert post
-  await prisma.dgwPost.upsert({
+  await prisma.dgwUser.upsert({
+    where: { username: post.author },
+    update: existingPost ? {} : { postCount: { increment: 1 } },
+    create: { username: post.author, postCount: existingPost ? 0 : 1 },
+  });
+
+  const dgwPost = await prisma.dgwPost.upsert({
     where: { redditId: post.id },
     update: {
       score: post.score,
       upvoteRatio: post.upvote_ratio,
       commentCount: post.num_comments,
       flair: post.link_flair_text ?? null,
+      title: post.title,
+      selftext: post.selftext ?? "",
+      permalink: post.permalink,
     },
     create: {
       redditId: post.id,
@@ -154,12 +165,8 @@ export async function processPost(
     },
   });
 
-  // Detect completion
   const detection = detectDareType(post);
   if (detection.type === "none") return 0;
-
-  const dgwPost = await prisma.dgwPost.findUnique({ where: { redditId: post.id } });
-  if (!dgwPost) return 0;
 
   let created = 0;
 

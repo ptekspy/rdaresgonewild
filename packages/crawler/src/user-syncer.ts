@@ -1,5 +1,5 @@
 import { prisma } from "@rdgw/database";
-import { RedditClient } from "./reddit.js";
+import type { RedditListingClient } from "./reddit.js";
 import { processPost } from "./detector.js";
 
 const FRESH_MS = 60 * 60 * 1000;          // 1 hour
@@ -21,25 +21,16 @@ export function getUserSyncStatus(user: {
 }): SyncStatus {
   if (user.syncStatus === "never" || !user.lastSyncedAt) return "never";
   const age = Date.now() - user.lastSyncedAt.getTime();
-  if (age > STALE_MS) return "never"; // treat very old syncs as never
+  if (age > STALE_MS) return "never";
   if (age > FRESH_MS) return "stale";
   return "fresh";
 }
 
-/**
- * Sync a user's r/daresgonewild posts.
- *
- * mode:
- *   "full"        — fetch all pages (first-time users)
- *   "incremental" — stop when we reach posts older than lastSyncedAt
- *   "auto"        — chooses based on user's sync status
- */
 export async function syncUser(
   username: string,
-  client: RedditClient,
+  client: RedditListingClient,
   mode: SyncMode = "auto"
 ): Promise<{ postsProcessed: number; completionsFound: number }> {
-  // Upsert user record
   let user = await prisma.dgwUser.upsert({
     where: { username },
     update: {},
@@ -50,7 +41,6 @@ export async function syncUser(
   const resolvedMode: "full" | "incremental" =
     mode === "auto" ? (status === "never" ? "full" : "incremental") : mode;
 
-  // Mark as syncing
   user = await prisma.dgwUser.update({
     where: { username },
     data: { syncStatus: "syncing" },
@@ -71,7 +61,6 @@ export async function syncUser(
   let completionsFound = 0;
   let reachedOld = false;
   const maxPages = getMaxPages();
-
   const cutoff = user.lastSyncedAt ? user.lastSyncedAt.getTime() : 0;
 
   try {
@@ -86,6 +75,7 @@ export async function syncUser(
           reachedOld = true;
           break;
         }
+
         const newCompletions = await processPost(post, prisma, crawlRun.id);
         postsFound++;
         completionsFound += newCompletions;
@@ -95,10 +85,9 @@ export async function syncUser(
       after = nextAfter;
     }
 
-    // Mark fresh
     await prisma.dgwUser.update({
       where: { username },
-      data: { syncStatus: "fresh", lastSyncedAt: new Date(), postCount: postsFound },
+      data: { syncStatus: "fresh", lastSyncedAt: new Date() },
     });
 
     await prisma.crawlRun.update({

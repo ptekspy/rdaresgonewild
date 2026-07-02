@@ -1,0 +1,27 @@
+{
+  "name": "paidpolitely-adserver-dev-pack",
+  "domain": "ads.paidpolitely.com",
+  "created_for": "Codex handoff",
+  "first_consumer_site": "rdaresgonewild.com",
+  "files": [
+    "00-current-repo-context.md",
+    "01-target-architecture.md",
+    "02-database-schema-plan.md",
+    "03-adserver-api-spec.md",
+    "04-ads-sdk-spec.md",
+    "05-admin-app-spec.md",
+    "06-rdaresgonewild-migration.md",
+    "07-implementation-phases.md",
+    "08-security-privacy-compliance.md",
+    "09-env-examples.md",
+    "10-local-dev-and-scripts.md",
+    "11-testing-and-acceptance.md",
+    "12-codex-task-prompts.md",
+    "13-deployment-plan.md",
+    "14-example-code-snippets.md",
+    "15-file-tree-target.md",
+    "16-first-sponsor-contract-fields.md",
+    "17-definition-of-done.md",
+    "README.md"
+  ]
+}

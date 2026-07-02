@@ -1,13 +1,13 @@
 import { prisma } from "@rdgw/database";
 import { RedditClient } from "../reddit.js";
-import { scanSubreddit } from "../scanner.js";
+import { backfillSubredditNew } from "../scanner.js";
 import { getCrawlerRpm, loadEnvFiles } from "./env.js";
 
 loadEnvFiles();
 
 async function main() {
   const client = RedditClient.fromEnv(getCrawlerRpm());
-  await scanSubreddit(client);
+  await backfillSubredditNew(client);
 }
 
 main()

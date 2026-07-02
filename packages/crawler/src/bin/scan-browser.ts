@@ -1,13 +1,17 @@
 import { prisma } from "@rdgw/database";
-import { RedditClient } from "../reddit.js";
+import { BrowserRedditClient } from "../browser-reddit.js";
 import { scanSubreddit } from "../scanner.js";
 import { getCrawlerRpm, loadEnvFiles } from "./env.js";
 
 loadEnvFiles();
 
 async function main() {
-  const client = RedditClient.fromEnv(getCrawlerRpm());
-  await scanSubreddit(client);
+  const client = BrowserRedditClient.fromEnv(getCrawlerRpm());
+  try {
+    await scanSubreddit(client);
+  } finally {
+    await client.close();
+  }
 }
 
 main()
