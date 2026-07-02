@@ -145,7 +145,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                         <span className="min-w-0 flex-1 truncate font-semibold text-zinc-200">{dare.name}</span>
                         {completion?.post.permalink ? (
                           <a
-                            href={completion.post.permalink}
+                            href={`https://reddit.com${completion.post.permalink}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="rdgw-link shrink-0 text-xs font-bold"
@@ -174,7 +174,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                 <span className="text-zinc-400">Dared by</span>
                 <span className="font-bold text-white">u/{completion.darerUsername}</span>
                 <a
-                  href={completion.post.permalink}
+                  href={`https://reddit.com${completion.post.permalink}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="rdgw-link ml-auto text-xs font-bold"
