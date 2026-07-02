@@ -43,7 +43,7 @@ export default async function HomePage() {
   const totalDares = PLAYBOOK_DARES.length;
 
   return (
-    <div className="rdgw-page-shell py-10 sm:py-14">
+    <div className="rdgw-page-shell py-4 sm:py-8">
       <section className="rdgw-card-strong rdgw-glow-border relative isolate overflow-hidden px-5 py-10 sm:px-10 lg:px-12 lg:py-14">
         <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-orange-500/[0.18] blur-3xl" />
         <div className="absolute -bottom-24 left-10 h-72 w-72 rounded-full bg-pink-600/20 blur-3xl" />
@@ -67,16 +67,6 @@ export default async function HomePage() {
                 View leaderboard
               </Link>
             </div>
-          </div>
-
-          <div className="relative mx-auto w-full max-w-sm lg:max-w-md">
-            <div className="absolute inset-10 rounded-full bg-pink-500/20 blur-3xl" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/brand/rdgw-flame-icon-color.png"
-              alt="r/DARES flame mascot"
-              className="relative mx-auto h-auto w-full drop-shadow-[0_24px_60px_rgba(249,4,124,0.28)]"
-            />
           </div>
         </div>
       </section>
