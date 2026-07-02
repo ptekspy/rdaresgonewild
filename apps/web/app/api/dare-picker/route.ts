@@ -46,10 +46,10 @@ export async function POST(req: NextRequest) {
     where: { username, ...NOT_REJECTED },
     select: { dareSlug: true },
   });
-  const completedSlugs = new Set(completions.map((c) => c.dareSlug));
+  const completedSlugs = new Set(completions.map((c: { dareSlug: any; }) => c.dareSlug));
 
   // Filter eligible dares
-  const eligible = PLAYBOOK_DARES.filter((d) => !completedSlugs.has(d.slug));
+  const eligible = PLAYBOOK_DARES.filter((d: { slug: unknown; }) => !completedSlugs.has(d.slug));
 
   if (eligible.length === 0) {
     return NextResponse.json({
@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Pick the lowest-level uncompleted dare (random within same level)
-  const minLevel = eligible.reduce((min, d) => Math.min(min, d.levelOrder), Infinity);
-  const sameLevel = eligible.filter((d) => d.levelOrder === minLevel);
+  const minLevel = eligible.reduce((min: number, d: { levelOrder: number; }) => Math.min(min, d.levelOrder), Infinity);
+  const sameLevel = eligible.filter((d: { levelOrder: any; }) => d.levelOrder === minLevel);
   const pick = sameLevel[Math.floor(Math.random() * sameLevel.length)];
 
   return NextResponse.json({
