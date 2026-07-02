@@ -1,5 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import { PrismaNeonHTTP } from "@prisma/adapter-neon";
+import { PrismaClient } from "./generated/cloudflare/client";
 
 export function createCloudflarePrismaClient(connectionString: string) {
   return new PrismaClient({
@@ -8,4 +8,4 @@ export function createCloudflarePrismaClient(connectionString: string) {
   });
 }
 
-export * from "@prisma/client";
+export * from "./generated/cloudflare/client";
