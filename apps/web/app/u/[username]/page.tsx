@@ -11,12 +11,18 @@ const NOT_REJECTED = { OR: [{ verified: true }, { verified: null }] };
 type PlaybookCompletionSummary = {
   dareSlug: string;
   detectedAt: Date;
+  post: {
+    permalink: string;
+  };
 };
 
 type CommunityCompletionSummary = {
   id: string;
   darerUsername: string;
   detectedAt: Date;
+  post: {
+    permalink: string;
+  };
 };
 
 interface PageProps {
@@ -41,16 +47,19 @@ export default async function UserProfilePage({ params }: PageProps) {
     db.playbookCompletion.findMany({
       where: { username, ...NOT_REJECTED },
       orderBy: { detectedAt: "desc" },
-      select: { dareSlug: true, detectedAt: true },
+      select: { dareSlug: true, detectedAt: true, post: { select: { permalink: true } } },
     }),
     db.communityCompletion.findMany({
       where: { username, ...NOT_REJECTED },
       orderBy: { detectedAt: "desc" },
-      select: { id: true, darerUsername: true, detectedAt: true },
+      select: { id: true, darerUsername: true, detectedAt: true, post: { select: { permalink: true } } },
     }),
   ]);
 
   const completedSlugs = new Set(playbookCompletions.map((c) => c.dareSlug));
+  const playbookCompletionBySlug = new Map(
+    playbookCompletions.map((completion) => [completion.dareSlug, completion])
+  );
   const totalDares = PLAYBOOK_DARES.length;
   const completedCount = completedSlugs.size;
   const pct = Math.round((completedCount / totalDares) * 100);
@@ -126,13 +135,26 @@ export default async function UserProfilePage({ params }: PageProps) {
                   {levelLabel} ({doneInLevel.length}/{levelDares.length})
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {doneInLevel.map((dare) => (
-                    <div key={dare.slug} className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm">
-                      <span className="text-xl">{dare.emoji}</span>
-                      <span className="text-zinc-200">{dare.name}</span>
-                      <span className="ml-auto text-green-500 text-xs">✓</span>
-                    </div>
-                  ))}
+                  {doneInLevel.map((dare) => {
+                    const completion = playbookCompletionBySlug.get(dare.slug);
+                    return (
+                      <div key={dare.slug} className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm">
+                        <span className="text-xl">{dare.emoji}</span>
+                        <span className="text-zinc-200">{dare.name}</span>
+                        {completion?.post.permalink && (
+                          <a
+                            href={completion.post.permalink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                          >
+                            view post →
+                          </a>
+                        )}
+                        {!completion?.post.permalink && <span className="ml-auto text-green-500 text-xs">✓</span>}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -150,7 +172,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                 <span className="text-zinc-400">Dared by</span>
                 <span className="font-medium text-white">u/{c.darerUsername}</span>
                 <a
-                  href={`https://reddit.com/r/daresgonewild`}
+                  href={c.post.permalink}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-auto text-xs text-zinc-600 hover:text-zinc-400"

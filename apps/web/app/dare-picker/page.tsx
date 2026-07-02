@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DarePickerClient } from "./DarePickerClient";
 import { AdSlot } from "@/components/AdSlot";
-import { LEVEL_LABELS, PLAYBOOK_DARES } from "@rdgw/playbook";
+import { DARE_REQUIREMENT_OPTIONS, LEVEL_LABELS, PLAYBOOK_DARES } from "@rdgw/playbook";
 
 export const metadata: Metadata = { title: "Pick a Dare" };
 
@@ -10,7 +10,7 @@ export default function DarePickerPage() {
   const levelNames = Object.entries(LEVEL_LABELS).map(([key, label]) => ({
     key,
     label,
-    count: PLAYBOOK_DARES.filter((d: { level: string; }) => d.level === key).length,
+    count: PLAYBOOK_DARES.filter((d: { level: string }) => d.level === key).length,
   }));
 
   return (
@@ -22,7 +22,11 @@ export default function DarePickerPage() {
         </p>
       </div>
 
-      <DarePickerClient totalDares={totalDares} levelNames={levelNames} />
+      <DarePickerClient
+        totalDares={totalDares}
+        levelNames={levelNames}
+        requirementOptions={[...DARE_REQUIREMENT_OPTIONS]}
+      />
 
       <AdSlot slotKey="dare_picker_sidebar" />
     </div>

@@ -22,6 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/leaderboard" className="px-3 py-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
                 Leaderboard
               </Link>
+              <Link href="/dares" className="px-3 py-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+                Dares
+              </Link>
               <Link href="/dare-picker" className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-500 text-white font-medium transition-colors">
                 Pick a Dare
               </Link>
