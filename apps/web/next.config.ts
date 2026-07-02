@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
-  transpilePackages: ["@rdgw/playbook"],
+  transpilePackages: ["@rdgw/playbook", "@paidpolitely/ads-sdk"],
   serverExternalPackages: ["@prisma/client", ".prisma/client"],
   experimental: {
     serverActions: {

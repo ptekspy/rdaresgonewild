@@ -15,6 +15,7 @@
   "dependencies": {
     "@prisma/adapter-neon": "6.19.3",
     "@prisma/client": "^6.0.0",
+    "@paidpolitely/ads-sdk": "workspace:*",
     "@rdgw/playbook": "workspace:*",
     "next": "16.2.10",
     "react": "19.2.7",
