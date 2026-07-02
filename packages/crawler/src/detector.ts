@@ -4,7 +4,36 @@ import type { prisma as prismaClient } from "@rdgw/database";
 
 const DARED_BY_PATTERN = /dared\s*by/i;
 const PLAYBOOK_PATTERN = /playbook/i;
-const DARER_PATTERN = /\bu\/([A-Za-z0-9_-]{3,20})\b/g;
+const DARER_PATTERN = /\bu\/([A-Za-z0-9_-]{3,20})\b/gi;
+const USERNAME_PATTERN = "[A-Za-z0-9_-]{3,20}";
+const QUOTED_USERNAME_PATTERN = `[\"'“”‘’]?(${USERNAME_PATTERN})[\"'“”‘’]?`;
+const DARER_CONTEXT_PATTERNS = [
+  new RegExp(`\\bdared\\s+by\\s+(?:[ur]\\s*/\\s*)?${QUOTED_USERNAME_PATTERN}`, "gi"),
+  new RegExp(
+    `\\b(?:[ur]\\s*/\\s*)?${QUOTED_USERNAME_PATTERN}\\s+` +
+      `(?:dared|ask(?:s|ed)?|requested)\\s+(?:me|us|for)\\b`,
+    "gi"
+  ),
+  new RegExp(`\\b(?:by|for|from)\\s+(?:you\\s+)?${QUOTED_USERNAME_PATTERN}\\b`, "gi"),
+];
+const NON_USER_DARERS = new Set([
+  "a",
+  "all",
+  "and",
+  "community",
+  "everyone",
+  "he",
+  "hubby",
+  "me",
+  "multiple",
+  "requestor",
+  "several",
+  "she",
+  "someone",
+  "them",
+  "the",
+  "you",
+]);
 
 export interface DetectionResult {
   type: "playbook" | "community" | "none";
@@ -38,10 +67,7 @@ export function detectDareType(post: RedditPost): DetectionResult {
     return { type: "none", confidence: 0 };
   }
 
-  // Try community dare: look for u/username in title or selftext
-  const darers = [...fullText.matchAll(DARER_PATTERN)]
-    .map((m) => m[1])
-    .filter((u) => u.toLowerCase() !== post.author.toLowerCase()); // exclude self-reference
+  const darers = extractDarerUsernames(fullText, post.author);
 
   if (darers.length > 0) {
     return {
@@ -53,6 +79,38 @@ export function detectDareType(post: RedditPost): DetectionResult {
 
   // Has "Dared by" flair but couldn't identify specifics
   return { type: "none", confidence: 0 };
+}
+
+function extractDarerUsernames(text: string, author: string) {
+  const usernames = new Set<string>();
+
+  for (const match of text.matchAll(DARER_PATTERN)) {
+    addDarer(usernames, match[1], author);
+  }
+
+  for (const pattern of DARER_CONTEXT_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      addDarer(usernames, match[1], author);
+    }
+  }
+
+  return [...usernames];
+}
+
+function addDarer(usernames: Set<string>, value: string | undefined, author: string) {
+  const username = normaliseUsername(value);
+  if (!username) return;
+
+  const lower = username.toLowerCase();
+  if (lower === author.toLowerCase()) return;
+  if (NON_USER_DARERS.has(lower)) return;
+
+  usernames.add(username);
+}
+
+function normaliseUsername(value: string | undefined) {
+  const username = value?.replace(/^[ur]\s*\/\s*/i, "").replace(/[^\w-]+$/g, "") ?? "";
+  return /^[A-Za-z0-9_-]{3,20}$/.test(username) ? username : null;
 }
 
 /**

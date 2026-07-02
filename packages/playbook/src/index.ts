@@ -210,16 +210,19 @@ export const PLAYBOOK_BY_SLUG = new Map<string, PlaybookDare>(
  * Scoring:
  *   +10  dare name found verbatim in text (case-insensitive)
  *   +5   emoji found in text
- *   +2   per significant word from dare name found in text
+ *   +2   per significant token from dare name found in text
  */
 export function matchPlaybookDare(text: string): PlaybookDare | null {
-  const normalised = text.toLowerCase().replace(/['']/g, "'");
+  const normalised = normaliseDareSearchText(text);
+  const textTokens = new Set(
+    tokensForDareSearch(normalised).flatMap((token) => [token, singularise(token)])
+  );
   let best: PlaybookDare | null = null;
   let bestScore = 2; // minimum threshold
 
   for (const dare of PLAYBOOK_DARES) {
     let score = 0;
-    const normName = dare.name.toLowerCase();
+    const normName = normaliseDareSearchText(dare.name);
 
     // Exact name match
     if (normalised.includes(normName)) score += 10;
@@ -227,11 +230,11 @@ export function matchPlaybookDare(text: string): PlaybookDare | null {
     // Emoji match (emoji are unicode, simple includes works)
     if (text.includes(dare.emoji)) score += 5;
 
-    // Significant word matches (skip words ≤ 3 chars)
+    // Significant token matches, allowing small title variations like "hand" vs "hands".
     if (score < 10) {
-      const words = normName.split(/\s+/).filter((w) => w.length > 3);
+      const words = tokensForDareSearch(normName);
       for (const word of words) {
-        if (normalised.includes(word)) score += 2;
+        if (textTokens.has(singularise(word))) score += 2;
       }
     }
 
@@ -242,6 +245,25 @@ export function matchPlaybookDare(text: string): PlaybookDare | null {
   }
 
   return best;
+}
+
+function normaliseDareSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[\[(]([a-z])[\])]/gi, "$1")
+    .replace(/[’‘]/g, "'")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokensForDareSearch(value: string) {
+  return value.split(/\s+/).filter((word) => word.length > 2 && word !== "the" && word !== "and");
+}
+
+function singularise(value: string) {
+  return value.length > 3 && value.endsWith("s") ? value.slice(0, -1) : value;
 }
 
 /** Returns all dares grouped by level in order */

@@ -1,20 +1,54 @@
 import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { prisma } from "@rdgw/database";
+import { Prisma, prisma } from "@rdgw/database";
 import type { RedditPost } from "./reddit.js";
-import { processPost } from "./detector.js";
+import { detectDareType } from "./detector.js";
 
 export interface HtmlImportResult {
   postsParsed: number;
   postsProcessed: number;
   completionsFound: number;
+  playbookCompletionsFound: number;
+  communityCompletionsFound: number;
 }
 
 type AttributeMap = Record<string, string>;
+type ImportBatchResult = {
+  postsProcessed: number;
+  completionsFound: number;
+  playbookCompletionsFound: number;
+  communityCompletionsFound: number;
+};
+type PostIdRow = { id: string; redditId: string };
+type CompletionInsertRow = { id: string };
+
+export type HtmlImportProgress =
+  | { phase: "reading"; filePath: string }
+  | { phase: "parsed"; postsParsed: number; batchSize: number; totalBatches: number }
+  | {
+      phase: "batch";
+      batchNumber: number;
+      totalBatches: number;
+      postsProcessed: number;
+      totalPosts: number;
+      batchPosts: number;
+      batchCompletionsFound: number;
+      completionsFound: number;
+      playbookCompletionsFound: number;
+      communityCompletionsFound: number;
+    }
+  | { phase: "completed"; result: HtmlImportResult };
+
+export interface HtmlImportOptions {
+  batchSize?: number;
+  onProgress?: (progress: HtmlImportProgress) => void;
+}
 
 const POST_BLOCK_PATTERN = /<shreddit-post(?=[\s>])([^>]*)>([\s\S]*?)<\/shreddit-post>/g;
 const FLAIR_BLOCK_PATTERN =
   /<shreddit-post-flair(?=[\s>])([^>]*)>([\s\S]*?)<\/shreddit-post-flair>/g;
+const DEFAULT_IMPORT_BATCH_SIZE = 100;
 
 export function parseDaresGoneWildHtml(html: string): RedditPost[] {
   const flairsByPostId = parseFlairs(html);
@@ -33,10 +67,24 @@ export function parseDaresGoneWildHtml(html: string): RedditPost[] {
   return [...posts.values()];
 }
 
-export async function importHtmlFile(filePath: string): Promise<HtmlImportResult> {
+export async function importHtmlFile(
+  filePath: string,
+  options: HtmlImportOptions = {}
+): Promise<HtmlImportResult> {
+  const batchSize = normaliseBatchSize(options.batchSize);
+  options.onProgress?.({ phase: "reading", filePath });
+
   const html = await fs.readFile(filePath, "utf8");
   const posts = parseDaresGoneWildHtml(html);
   const target = path.basename(filePath);
+  const batches = chunk(posts, batchSize);
+
+  options.onProgress?.({
+    phase: "parsed",
+    postsParsed: posts.length,
+    batchSize,
+    totalBatches: batches.length,
+  });
 
   const crawlRun = await prisma.crawlRun.create({
     data: {
@@ -49,11 +97,37 @@ export async function importHtmlFile(filePath: string): Promise<HtmlImportResult
 
   let postsProcessed = 0;
   let completionsFound = 0;
+  let playbookCompletionsFound = 0;
+  let communityCompletionsFound = 0;
 
   try {
-    for (const post of posts) {
-      completionsFound += await processPost(post, prisma, crawlRun.id);
-      postsProcessed++;
+    for (let index = 0; index < batches.length; index++) {
+      const batchResult = await importPostBatch(batches[index]);
+      postsProcessed += batchResult.postsProcessed;
+      completionsFound += batchResult.completionsFound;
+      playbookCompletionsFound += batchResult.playbookCompletionsFound;
+      communityCompletionsFound += batchResult.communityCompletionsFound;
+
+      await prisma.crawlRun.update({
+        where: { id: crawlRun.id },
+        data: {
+          postsFound: postsProcessed,
+          completionsDetected: completionsFound,
+        },
+      });
+
+      options.onProgress?.({
+        phase: "batch",
+        batchNumber: index + 1,
+        totalBatches: batches.length,
+        postsProcessed,
+        totalPosts: posts.length,
+        batchPosts: batchResult.postsProcessed,
+        batchCompletionsFound: batchResult.completionsFound,
+        completionsFound,
+        playbookCompletionsFound,
+        communityCompletionsFound,
+      });
     }
 
     await prisma.crawlRun.update({
@@ -66,11 +140,15 @@ export async function importHtmlFile(filePath: string): Promise<HtmlImportResult
       },
     });
 
-    return {
+    const result = {
       postsParsed: posts.length,
       postsProcessed,
       completionsFound,
+      playbookCompletionsFound,
+      communityCompletionsFound,
     };
+    options.onProgress?.({ phase: "completed", result });
+    return result;
   } catch (err) {
     await prisma.crawlRun.update({
       where: { id: crawlRun.id },
@@ -78,6 +156,243 @@ export async function importHtmlFile(filePath: string): Promise<HtmlImportResult
     });
     throw err;
   }
+}
+
+async function importPostBatch(posts: RedditPost[]): Promise<ImportBatchResult> {
+  if (posts.length === 0) {
+    return {
+      postsProcessed: 0,
+      completionsFound: 0,
+      playbookCompletionsFound: 0,
+      communityCompletionsFound: 0,
+    };
+  }
+
+  const detections = posts.map((post) => ({ post, detection: detectDareType(post) }));
+
+  return prisma.$transaction(async (tx) => {
+    await tx.dgwUser.createMany({
+      data: uniqueValues(posts.map((post) => post.author)).map((username) => ({ username })),
+      skipDuplicates: true,
+    });
+
+    await incrementUserPostCounts(
+      new Map(countBy(posts, (post) => post.author)),
+      (query) => tx.$executeRaw(query)
+    );
+    await upsertPosts(posts, (query) => tx.$executeRaw(query));
+
+    const detectedPostIds = uniqueValues(
+      detections
+        .filter(({ detection }) => detection.type !== "none")
+        .map(({ post }) => post.id)
+    );
+    const postIds = await fetchPostIds(detectedPostIds, (query) => tx.$queryRaw<PostIdRow[]>(query));
+
+    const playbookCompletions = new Map<
+      string,
+      { username: string; dareSlug: string; postId: string; confidence: number }
+    >();
+    const communityCompletions = new Map<
+      string,
+      { username: string; darerUsername: string; postId: string }
+    >();
+
+    for (const { post, detection } of detections) {
+      const postId = postIds.get(post.id);
+      if (!postId) continue;
+
+      if (detection.type === "playbook" && detection.dareSlug) {
+        const key = `${post.author}\0${detection.dareSlug}`;
+        if (!playbookCompletions.has(key)) {
+          playbookCompletions.set(key, {
+            username: post.author,
+            dareSlug: detection.dareSlug,
+            postId,
+            confidence: detection.confidence,
+          });
+        }
+      }
+
+      if (detection.type === "community" && detection.darerUsername) {
+        const key = `${post.author}\0${postId}`;
+        if (!communityCompletions.has(key)) {
+          communityCompletions.set(key, {
+            username: post.author,
+            darerUsername: detection.darerUsername,
+            postId,
+          });
+        }
+      }
+    }
+
+    const playbookCompletionsFound = await insertPlaybookCompletions(
+      [...playbookCompletions.values()],
+      (query) => tx.$queryRaw<CompletionInsertRow[]>(query)
+    );
+    const communityCompletionsFound = await insertCommunityCompletions(
+      [...communityCompletions.values()],
+      (query) => tx.$queryRaw<CompletionInsertRow[]>(query)
+    );
+
+    return {
+      postsProcessed: posts.length,
+      completionsFound: playbookCompletionsFound + communityCompletionsFound,
+      playbookCompletionsFound,
+      communityCompletionsFound,
+    };
+  });
+}
+
+async function incrementUserPostCounts(
+  postCounts: Map<string, number>,
+  executeRaw: (query: Prisma.Sql) => Promise<unknown>
+) {
+  const rows = [...postCounts.entries()].map(
+    ([username, count]) => Prisma.sql`(${username}, ${count})`
+  );
+  if (rows.length === 0) return;
+
+  await executeRaw(Prisma.sql`
+    UPDATE "DgwUser" AS user_record
+    SET
+      "postCount" = user_record."postCount" + post_count.value::integer,
+      "updatedAt" = CURRENT_TIMESTAMP
+    FROM (VALUES ${Prisma.join(rows)}) AS post_count(username, value)
+    WHERE user_record."username" = post_count.username
+  `);
+}
+
+async function upsertPosts(
+  posts: RedditPost[],
+  executeRaw: (query: Prisma.Sql) => Promise<unknown>
+) {
+  const now = new Date();
+  const rows = posts.map((post) => {
+    const createdAtReddit = new Date(post.created_utc * 1000);
+    return Prisma.sql`(
+      ${randomUUID()},
+      ${post.id},
+      ${post.author},
+      ${post.title},
+      ${post.selftext ?? ""},
+      ${post.link_flair_text ?? null},
+      ${post.score},
+      ${post.upvote_ratio},
+      ${post.num_comments},
+      ${post.permalink},
+      ${createdAtReddit},
+      ${now},
+      ${now}
+    )`;
+  });
+  if (rows.length === 0) return;
+
+  await executeRaw(Prisma.sql`
+    INSERT INTO "DgwPost" (
+      "id",
+      "redditId",
+      "authorUsername",
+      "title",
+      "selftext",
+      "flair",
+      "score",
+      "upvoteRatio",
+      "commentCount",
+      "permalink",
+      "createdAtReddit",
+      "crawledAt",
+      "updatedAt"
+    )
+    VALUES ${Prisma.join(rows)}
+    ON CONFLICT ("redditId") DO UPDATE SET
+      "score" = EXCLUDED."score",
+      "upvoteRatio" = EXCLUDED."upvoteRatio",
+      "commentCount" = EXCLUDED."commentCount",
+      "flair" = EXCLUDED."flair",
+      "updatedAt" = CURRENT_TIMESTAMP
+  `);
+}
+
+async function fetchPostIds(
+  redditIds: string[],
+  queryRaw: (query: Prisma.Sql) => Promise<PostIdRow[]>
+) {
+  if (redditIds.length === 0) return new Map<string, string>();
+
+  const rows = await queryRaw(Prisma.sql`
+    SELECT "id", "redditId"
+    FROM "DgwPost"
+    WHERE "redditId" IN (${Prisma.join(redditIds)})
+  `);
+
+  return new Map(rows.map((row) => [row.redditId, row.id]));
+}
+
+async function insertPlaybookCompletions(
+  completions: Array<{ username: string; dareSlug: string; postId: string; confidence: number }>,
+  queryRaw: (query: Prisma.Sql) => Promise<CompletionInsertRow[]>
+) {
+  const now = new Date();
+  const rows = completions.map(
+    (completion) => Prisma.sql`(
+      ${randomUUID()},
+      ${completion.username},
+      ${completion.dareSlug},
+      ${completion.postId},
+      ${completion.confidence},
+      ${now}
+    )`
+  );
+  if (rows.length === 0) return 0;
+
+  const inserted = await queryRaw(Prisma.sql`
+    INSERT INTO "PlaybookCompletion" (
+      "id",
+      "username",
+      "dareSlug",
+      "postId",
+      "confidence",
+      "detectedAt"
+    )
+    VALUES ${Prisma.join(rows)}
+    ON CONFLICT ("username", "dareSlug") DO NOTHING
+    RETURNING "id"
+  `);
+
+  return inserted.length;
+}
+
+async function insertCommunityCompletions(
+  completions: Array<{ username: string; darerUsername: string; postId: string }>,
+  queryRaw: (query: Prisma.Sql) => Promise<CompletionInsertRow[]>
+) {
+  const now = new Date();
+  const rows = completions.map(
+    (completion) => Prisma.sql`(
+      ${randomUUID()},
+      ${completion.username},
+      ${completion.darerUsername},
+      ${completion.postId},
+      ${now}
+    )`
+  );
+  if (rows.length === 0) return 0;
+
+  const inserted = await queryRaw(Prisma.sql`
+    INSERT INTO "CommunityCompletion" (
+      "id",
+      "username",
+      "darerUsername",
+      "postId",
+      "detectedAt"
+    )
+    VALUES ${Prisma.join(rows)}
+    ON CONFLICT ("username", "postId") DO NOTHING
+    RETURNING "id"
+  `);
+
+  return inserted.length;
 }
 
 function postFromAttributes(
@@ -205,4 +520,30 @@ function parseFloatNumber(value?: string) {
 
 function absolutizeRedditUrl(value: string) {
   return value.startsWith("http") ? value : `https://www.reddit.com${value}`;
+}
+
+function normaliseBatchSize(value: number | undefined) {
+  if (!value || !Number.isFinite(value)) return DEFAULT_IMPORT_BATCH_SIZE;
+  return Math.max(1, Math.floor(value));
+}
+
+function chunk<T>(values: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function uniqueValues<T>(values: T[]) {
+  return [...new Set(values)];
+}
+
+function countBy<T>(values: T[], getKey: (value: T) => string) {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const key = getKey(value);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
 }
