@@ -4,6 +4,7 @@ node_modules
 dist
 .env
 .env.local
+.env.user
 .dev.vars
 .dev.vars.*
 *.tsbuildinfo

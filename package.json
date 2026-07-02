@@ -4,11 +4,14 @@
   "scripts": {
     "build": "pnpm db:generate && turbo build",
     "dev": "turbo dev",
+    "dev:adserver": "pnpm --filter @paidpolitely/adserver dev",
+    "dev:rdgw": "pnpm --filter @rdgw/web dev",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
     "postinstall": "pnpm db:generate",
     "db:generate": "pnpm --filter @rdgw/database db:generate",
     "db:push": "pnpm --filter @rdgw/database db:push",
+    "db:seed": "pnpm --filter @rdgw/database db:seed",
     
     "crawler:build": "pnpm --filter @rdgw/crawler build",
 
