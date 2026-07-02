@@ -11,6 +11,7 @@ export function getIntegerEnv(name: string, fallback: number) {
 
 export function getBotConfig() {
   const subreddit = process.env.REDDIT_SUBREDDIT ?? "daresgonewild";
+
   return {
     subreddit,
     newIntervalMs: getIntegerEnv("CRAWLER_NEW_INTERVAL_MS", 60 * 60 * 1000),
@@ -65,7 +66,16 @@ export async function ensureDueJobs() {
     });
   }
 
+  /**
+   * User jobs are filler work.
+   * If any subreddit job is due, do not spend this loop creating more user jobs.
+   */
+  if (await hasDueSubredditJob()) {
+    return;
+  }
+
   const cutoff = new Date(now.getTime() - config.userRecrawlMs);
+
   const users = await prisma.dgwUser.findMany({
     where: {
       OR: [
@@ -84,6 +94,21 @@ export async function ensureDueJobs() {
   }
 }
 
+async function hasDueSubredditJob() {
+  const now = new Date();
+
+  const job = await prisma.browserCrawlJob.findFirst({
+    where: {
+      status: "queued",
+      scheduledFor: { lte: now },
+      type: { in: ["subreddit_new_hourly", "subreddit_sort_daily"] },
+    },
+    select: { id: true },
+  });
+
+  return Boolean(job);
+}
+
 export async function queueUserJob(username: string, scheduledFor = new Date()) {
   const safeUsername = username.replace(/^u\//i, "").trim();
   if (!safeUsername || safeUsername === "[deleted]") return;
@@ -94,11 +119,13 @@ export async function queueUserJob(username: string, scheduledFor = new Date()) 
     url: `https://www.reddit.com/user/${encodeURIComponent(safeUsername)}/submitted/`,
     priority: 40,
     scheduledFor,
+    forceReschedule: false,
   });
 }
 
 export async function claimNextJob() {
   const now = new Date();
+
   const job = await prisma.browserCrawlJob.findFirst({
     where: {
       status: "queued",
@@ -121,11 +148,13 @@ export async function claimNextJob() {
   });
 
   if (claimed.count === 0) return null;
+
   return prisma.browserCrawlJob.findUniqueOrThrow({ where: { id: job.id } });
 }
 
 export async function completeJob(job: BrowserCrawlJob) {
   const now = new Date();
+
   const nextScheduledFor =
     job.type === "subreddit_new_hourly"
       ? new Date(now.getTime() + getBotConfig().newIntervalMs)
@@ -149,6 +178,7 @@ export async function completeJob(job: BrowserCrawlJob) {
 
 export async function failJob(job: BrowserCrawlJob, error: unknown) {
   const retryDelayMs = Math.min(60 * 60 * 1000, 60_000 * Math.max(1, job.attempts));
+
   await prisma.browserCrawlJob.update({
     where: { id: job.id },
     data: {
@@ -173,7 +203,7 @@ async function ensureRecurringJob(input: {
   });
 
   if (!existing) {
-    await upsertJob({ ...input, scheduledFor: new Date() });
+    await upsertJob({ ...input, scheduledFor: new Date(), forceReschedule: true });
     return;
   }
 
@@ -195,11 +225,28 @@ async function upsertJob(input: {
   url: string;
   priority: number;
   scheduledFor: Date;
+  forceReschedule?: boolean;
 }) {
   const key = dedupeKey(input.type, input.target);
-  const existing = await prisma.browserCrawlJob.findUnique({ where: { dedupeKey: key } });
+
+  const existing = await prisma.browserCrawlJob.findUnique({
+    where: { dedupeKey: key },
+  });
 
   if (existing?.status === "running") return;
+
+  /**
+   * For user jobs, do not pull a future completed job back to now just because
+   * the author appeared in another scan.
+   */
+  if (
+    existing &&
+    !input.forceReschedule &&
+    existing.scheduledFor > new Date() &&
+    existing.status !== "failed"
+  ) {
+    return;
+  }
 
   await prisma.browserCrawlJob.upsert({
     where: { dedupeKey: key },
@@ -207,7 +254,10 @@ async function upsertJob(input: {
       url: input.url,
       priority: input.priority,
       scheduledFor: input.scheduledFor,
-      status: existing?.status === "completed" || existing?.status === "failed" ? "queued" : existing?.status ?? "queued",
+      status:
+        existing?.status === "completed" || existing?.status === "failed"
+          ? "queued"
+          : existing?.status ?? "queued",
     },
     create: {
       dedupeKey: key,

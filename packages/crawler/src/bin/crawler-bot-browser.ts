@@ -19,11 +19,13 @@ let wakeWait: (() => void) | undefined;
 
 function sleep(ms: number) {
   if (stopping) return Promise.resolve();
+
   return new Promise<void>((resolve) => {
     const timeout = setTimeout(() => {
       wakeWait = undefined;
       resolve();
     }, ms);
+
     wakeWait = () => {
       clearTimeout(timeout);
       wakeWait = undefined;
@@ -55,6 +57,7 @@ async function main() {
   try {
     while (!stopping) {
       await ensureDueJobs();
+
       const job = await claimNextJob();
 
       if (!job) {
@@ -78,9 +81,11 @@ async function main() {
 
 async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
   const config = getBotConfig();
+
   console.log(`[crawler-bot] running ${job.type}:${job.target} -> ${job.url}`);
 
   await browser.navigate(job.url);
+
   const capture = await browser.scrollAndCapture({
     waitMs: config.scrollWaitMs,
     stableRounds: config.scrollStableRounds,
@@ -97,8 +102,16 @@ async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
     subreddit: config.subreddit,
   });
 
-  for (const author of result.authors) {
-    await queueUserJob(author);
+  /**
+   * Only subreddit scans should discover/queue users.
+   *
+   * User profile scans normally parse the same author over and over, so queuing
+   * authors from user_full_scroll can cause immediate repeat user jobs.
+   */
+  if (job.type === "subreddit_new_hourly" || job.type === "subreddit_sort_daily") {
+    for (const author of result.authors) {
+      await queueUserJob(author);
+    }
   }
 
   if (job.type === "user_full_scroll") {
@@ -110,6 +123,7 @@ async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
 
   if (job.type === "subreddit_new_hourly") {
     const firstPost = parseDaresGoneWildHtml(capture.html)[0];
+
     if (firstPost?.name) {
       await prisma.crawlCursor.upsert({
         where: { type: "subreddit_new" },
