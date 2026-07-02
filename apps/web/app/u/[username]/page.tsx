@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { getRedditUrl } from "@/lib/urls";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PLAYBOOK_BY_SLUG, PLAYBOOK_DARES, LEVEL_LABELS } from "@rdgw/playbook";
@@ -145,7 +146,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                         <span className="min-w-0 flex-1 truncate font-semibold text-zinc-200">{dare.name}</span>
                         {completion?.post.permalink ? (
                           <a
-                            href={`https://reddit.com${completion.post.permalink}`}
+                            href={getRedditUrl(completion.post.permalink)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="rdgw-link shrink-0 text-xs font-bold"
@@ -174,7 +175,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                 <span className="text-zinc-400">Dared by</span>
                 <span className="font-bold text-white">u/{completion.darerUsername}</span>
                 <a
-                  href={`https://reddit.com${completion.post.permalink}`}
+                  href={getRedditUrl(completion.post.permalink)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="rdgw-link ml-auto text-xs font-bold"

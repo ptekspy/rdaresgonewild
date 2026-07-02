@@ -1,8 +1,9 @@
-import { getDb } from "@/lib/db";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getRedditUrl } from "@/lib/urls";
 import { notFound } from "next/navigation";
 import { LEVEL_LABELS, PLAYBOOK_BY_SLUG, type PlaybookDare, type PlaybookLevel } from "@rdgw/playbook";
+import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -128,7 +129,7 @@ export default async function DareAttemptsPage({ params, searchParams }: PagePro
                   <div className="flex items-center gap-3 sm:justify-end">
                     <span className="text-xs text-zinc-600">{fmtDate(attempt.detectedAt)}</span>
                     <a
-                      href={`https://reddit.com${attempt.post.permalink}`}
+                      href={getRedditUrl(attempt.post.permalink)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="rdgw-link text-xs font-bold"
