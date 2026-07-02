@@ -13,7 +13,7 @@ const HOUSE_AD_TARGET_URL =
   "mailto:coderpaddy+rdgw@gmail.com" +
   "?subject=Advertising%20on%20rdaresgonewild" +
   "&body=Hi%20Paddy%2C%0D%0A%0D%0AI%27d%20like%20to%20advertise%20on%20rdaresgonewild.%0D%0A%0D%0ACompany%20or%20name%3A%0D%0AWebsite%3A%0D%0ABudget%20or%20dates%3A%0D%0A%0D%0AThanks!";
-const HOUSE_AD_IMAGE_URL = "https://rdaresgonewild.com/ads/Advertise_Here_970x250.png";
+const HOUSE_AD_IMAGE_URL = "https://rdaresgonewild.com/ads/Advertise_Here_555x125.png";
 
 const RDGW_PLACEMENTS = [
   { key: "homepage_top", label: "Homepage top", width: 970, height: 250 },
