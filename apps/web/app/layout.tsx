@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="group inline-flex items-center gap-3" aria-label="r/DARES Gone Wild home">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/brand/rdgw-logo-horizontal-color.png"
+                src="/brand/rdgw-logo-horizontal-color-white.png"
                 alt="r/DARES Gone Wild"
                 className="h-11 w-auto transition-transform duration-200 group-hover:scale-[1.015]"
               />
