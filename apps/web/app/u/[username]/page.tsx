@@ -7,6 +7,17 @@ import { AdSlot } from "@/components/AdSlot";
 export const dynamic = "force-dynamic";
 const NOT_REJECTED = { OR: [{ verified: true }, { verified: null }] };
 
+type PlaybookCompletionSummary = {
+  dareSlug: string;
+  detectedAt: Date;
+};
+
+type CommunityCompletionSummary = {
+  id: string;
+  darerUsername: string;
+  detectedAt: Date;
+};
+
 interface PageProps {
   params: Promise<{ username: string }>;
 }
@@ -22,7 +33,10 @@ export default async function UserProfilePage({ params }: PageProps) {
 
   const user = await db.dgwUser.findUnique({ where: { username } });
 
-  const [playbookCompletions, communityCompletions] = await Promise.all([
+  const [playbookCompletions, communityCompletions]: [
+    PlaybookCompletionSummary[],
+    CommunityCompletionSummary[],
+  ] = await Promise.all([
     db.playbookCompletion.findMany({
       where: { username, ...NOT_REJECTED },
       orderBy: { detectedAt: "desc" },

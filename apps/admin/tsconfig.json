@@ -9,6 +9,7 @@
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "jsx": "preserve",
+    "types": ["node", "react", "react-dom"],
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./*"] }
