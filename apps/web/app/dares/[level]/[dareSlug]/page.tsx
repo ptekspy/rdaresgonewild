@@ -128,7 +128,7 @@ export default async function DareAttemptsPage({ params, searchParams }: PagePro
                   <div className="flex items-center gap-3 sm:justify-end">
                     <span className="text-xs text-zinc-600">{fmtDate(attempt.detectedAt)}</span>
                     <a
-                      href={attempt.post.permalink}
+                      href={`https://reddit.com${attempt.post.permalink}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="rdgw-link text-xs font-bold"
