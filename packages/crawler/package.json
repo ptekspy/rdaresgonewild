@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "type-check": "tsc --noEmit",
     "dev": "tsc --watch",
     "scan": "node dist/bin/scan.js",
     "scan:user": "node dist/bin/scan-user.js",

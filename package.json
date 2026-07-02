@@ -5,6 +5,7 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
+    "type-check": "turbo type-check",
     "db:generate": "pnpm --filter @rdgw/database db:generate",
     "db:push": "pnpm --filter @rdgw/database db:push"
   },

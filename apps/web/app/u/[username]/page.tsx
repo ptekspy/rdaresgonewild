@@ -22,17 +22,16 @@ export default async function UserProfilePage({ params }: PageProps) {
 
   const user = await db.dgwUser.findUnique({ where: { username } });
 
-  const [playbookCompletions, communityCompletions]: [
-    { dareSlug: string; detectedAt: Date }[],
-    { id: number; darerUsername: string; detectedAt: Date }[]
-  ] = await Promise.all([
+  const [playbookCompletions, communityCompletions] = await Promise.all([
     db.playbookCompletion.findMany({
       where: { username, ...NOT_REJECTED },
       orderBy: { detectedAt: "desc" },
+      select: { dareSlug: true, detectedAt: true },
     }),
     db.communityCompletion.findMany({
       where: { username, ...NOT_REJECTED },
       orderBy: { detectedAt: "desc" },
+      select: { id: true, darerUsername: true, detectedAt: true },
     }),
   ]);
 
@@ -102,8 +101,8 @@ export default async function UserProfilePage({ params }: PageProps) {
         <section className="space-y-6">
           <h2 className="text-xl font-bold">🎯 Playbook Dares</h2>
           {Object.entries(LEVEL_LABELS).map(([levelKey, levelLabel]) => {
-            const levelDares = PLAYBOOK_DARES.filter((d: { level: string; }) => d.level === levelKey);
-            const doneInLevel = levelDares.filter((d: { slug: string; }) => completedSlugs.has(d.slug));
+            const levelDares = PLAYBOOK_DARES.filter((d) => d.level === levelKey);
+            const doneInLevel = levelDares.filter((d) => completedSlugs.has(d.slug));
             if (doneInLevel.length === 0) return null;
             return (
               <div key={levelKey} className="space-y-2">
@@ -111,7 +110,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                   {levelLabel} ({doneInLevel.length}/{levelDares.length})
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {doneInLevel.map((dare: { slug: any; emoji: any; name: any; }) => (
+                  {doneInLevel.map((dare) => (
                     <div key={dare.slug} className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm">
                       <span className="text-xl">{dare.emoji}</span>
                       <span className="text-zinc-200">{dare.name}</span>
@@ -130,7 +129,7 @@ export default async function UserProfilePage({ params }: PageProps) {
         <section className="space-y-3">
           <h2 className="text-xl font-bold">🤝 Community Dares ({communityCompletions.length})</h2>
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
-            {communityCompletions.map((c: { id: any; darerUsername: any; }) => (
+            {communityCompletions.map((c) => (
               <div key={c.id} className="px-4 py-3 flex items-center gap-3 text-sm">
                 <span className="text-zinc-400">Dared by</span>
                 <span className="font-medium text-white">u/{c.darerUsername}</span>
