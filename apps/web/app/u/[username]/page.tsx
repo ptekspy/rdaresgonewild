@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PLAYBOOK_BY_SLUG, PLAYBOOK_DARES, LEVEL_LABELS } from "@rdgw/playbook";
 import { AdSlot } from "@/components/AdSlot";
+import { ProfilePersonalization } from "@/components/ProfilePersonalization";
 
 export const dynamic = "force-dynamic";
 const NOT_REJECTED = { OR: [{ verified: true }, { verified: null }] };
@@ -76,7 +77,8 @@ export default async function UserProfilePage({ params }: PageProps) {
               </p>
             )}
           </div>
-          <div className="text-right">
+          <div className="text-right space-y-3">
+            <ProfilePersonalization username={username} />
             <p className="text-2xl font-bold">{completedCount}<span className="text-zinc-600">/{totalDares}</span></p>
             <p className="text-xs text-zinc-500">dares completed</p>
           </div>

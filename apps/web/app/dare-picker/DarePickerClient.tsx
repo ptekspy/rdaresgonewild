@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LEVEL_LABELS } from "@rdgw/playbook";
+import { setPlayAsUsername, usePlayAsUsername } from "@/lib/play-as";
+import { isValidUsername, normaliseUsername } from "@/lib/username";
 
 interface DareResult {
   status: "syncing" | "done" | "no_dares_left";
@@ -24,15 +26,27 @@ interface Props {
 }
 
 export function DarePickerClient({ totalDares }: Props) {
+  const activeUsername = usePlayAsUsername();
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
   const [result, setResult] = useState<DareResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const normalise = (u: string) => u.replace(/^\/?u\//i, "").trim();
+  useEffect(() => {
+    if (activeUsername && !username) {
+      setUsername(`u/${activeUsername}`);
+    }
+  }, [activeUsername, username]);
 
   async function pick(u: string) {
+    const pickedUsername = normaliseUsername(u);
+
+    if (!isValidUsername(pickedUsername)) {
+      setError("Use a valid Reddit username: 3-20 letters, numbers, _ or -");
+      return;
+    }
+
     setError(null);
     setLoading(true);
     setResult(null);
@@ -41,7 +55,7 @@ export function DarePickerClient({ totalDares }: Props) {
       const res = await fetch("/api/dare-picker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: normalise(u) }),
+        body: JSON.stringify({ username: pickedUsername }),
       });
       const data = await res.json();
 
@@ -50,11 +64,14 @@ export function DarePickerClient({ totalDares }: Props) {
         return;
       }
 
+      setPlayAsUsername(pickedUsername);
+      setUsername(`u/${pickedUsername}`);
+
       if (data.status === "syncing") {
         setPolling(true);
         setResult(data);
         // Poll every 3s until done
-        await pollUntilDone(normalise(u));
+        await pollUntilDone(pickedUsername);
       } else {
         setResult(data);
       }
@@ -141,7 +158,7 @@ export function DarePickerClient({ totalDares }: Props) {
           <div className="text-4xl">🏆</div>
           <p className="text-white font-bold text-xl">Legendary!</p>
           <p className="text-zinc-400 text-sm">
-            u/{normalise(username)} has completed all {totalDares} dares. Absolute legend.
+            u/{normaliseUsername(username)} has completed all {totalDares} dares. Absolute legend.
           </p>
         </div>
       )}

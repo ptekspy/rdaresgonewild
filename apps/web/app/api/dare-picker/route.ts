@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PLAYBOOK_DARES } from "@rdgw/playbook";
 import { getDb } from "@/lib/db";
+import { isValidUsername, normaliseUsername } from "@/lib/username";
 
 const FRESH_MS = 60 * 60 * 1000; // 1 hour
 const STALE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -17,9 +18,9 @@ function getUserSyncStatus(user: { syncStatus: string; lastSyncedAt: Date | null
 export async function POST(req: NextRequest) {
   const db = getDb();
   const body = await req.json().catch(() => ({}));
-  const username = typeof body.username === "string" ? body.username.trim() : "";
+  const username = typeof body.username === "string" ? normaliseUsername(body.username) : "";
 
-  if (!username || !/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
+  if (!isValidUsername(username)) {
     return NextResponse.json({ error: "Invalid username" }, { status: 400 });
   }
 

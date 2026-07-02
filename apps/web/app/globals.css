@@ -16,3 +16,9 @@ body {
   color: var(--text);
   font-family: var(--font-sans, system-ui, sans-serif);
 }
+
+.rdgw-active-leaderboard-row {
+  background: rgba(127, 29, 29, 0.28);
+  outline: 1px solid rgba(239, 68, 68, 0.45);
+  outline-offset: -1px;
+}

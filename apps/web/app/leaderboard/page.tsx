@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PLAYBOOK_DARES, LEVEL_LABELS } from "@rdgw/playbook";
 import { AdSlot } from "@/components/AdSlot";
+import { LeaderboardPersonalization } from "@/components/LeaderboardPersonalization";
 
 export const metadata: Metadata = { title: "Leaderboard" };
 export const dynamic = "force-dynamic";
@@ -118,6 +119,8 @@ export default async function LeaderboardPage({ searchParams }: PageProps) {
 
       <AdSlot slotKey="leaderboard_banner" />
 
+      <LeaderboardPersonalization visibleUsernames={rows.map((row) => row.username)} tab={tab} />
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-zinc-800 pb-0">
         {tabs.map((t) => (
@@ -160,7 +163,11 @@ export default async function LeaderboardPage({ searchParams }: PageProps) {
               const rank = (page - 1) * PAGE_SIZE + i + 1;
               const pct = tab === "playbook" ? Math.round((r.count / totalDares) * 100) : null;
               return (
-                <tr key={r.username} className="hover:bg-zinc-800/30 transition-colors">
+                <tr
+                  key={r.username}
+                  data-leaderboard-username={r.username.toLowerCase()}
+                  className="hover:bg-zinc-800/30 transition-colors"
+                >
                   <td className="px-4 py-3 text-zinc-500 font-mono">{rank}</td>
                   <td className="px-4 py-3">
                     <Link href={`/u/${r.username}`} className="hover:text-red-400 transition-colors">

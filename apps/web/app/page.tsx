@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { PLAYBOOK_DARES, LEVEL_LABELS } from "@rdgw/playbook";
 import Link from "next/link";
 import { AdSlot } from "@/components/AdSlot";
+import { HomePlayerDashboard } from "@/components/HomePlayerDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,8 @@ export default async function HomePage() {
           </Link>
         </div>
       </section>
+
+      <HomePlayerDashboard />
 
       {/* Ad slot */}
       <AdSlot slotKey="home_banner" className="max-w-3xl mx-auto" />
