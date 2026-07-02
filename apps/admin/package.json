@@ -1,0 +1,28 @@
+{
+  "name": "@rdgw/admin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --port 6790",
+    "start": "next start --port 6790",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@rdgw/database": "workspace:*",
+    "@rdgw/playbook": "workspace:*",
+    "@rdgw/crawler": "workspace:*",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.3",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "postcss": "^8.5.0"
+  }
+}
