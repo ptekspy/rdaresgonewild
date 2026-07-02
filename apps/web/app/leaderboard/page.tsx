@@ -89,11 +89,11 @@ export default async function LeaderboardPage({ searchParams }: PageProps) {
 
   if (tab === "playbook") {
     const data = await getPlaybookLeaderboard(page);
-    rows = data.rows.map((r) => ({ username: r.username, count: r._count.dareSlug }));
+    rows = data.rows.map((r: { username: any; _count: { dareSlug: any; }; }) => ({ username: r.username, count: r._count.dareSlug }));
     totalUsers = data.totalUsers;
   } else if (tab === "community") {
     const data = await getCommunityLeaderboard(page);
-    rows = data.rows.map((r) => ({ username: r.username, count: r._count.id }));
+    rows = data.rows.map((r: { username: any; _count: { id: any; }; }) => ({ username: r.username, count: r._count.id }));
     totalUsers = data.totalUsers;
   } else {
     const data = await getOverallLeaderboard(page);

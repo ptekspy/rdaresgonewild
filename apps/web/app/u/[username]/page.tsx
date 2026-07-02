@@ -33,7 +33,7 @@ export default async function UserProfilePage({ params }: PageProps) {
     }),
   ]);
 
-  const completedSlugs = new Set(playbookCompletions.map((c) => c.dareSlug));
+  const completedSlugs = new Set(playbookCompletions.map((c: { dareSlug: any; }) => c.dareSlug));
   const totalDares = PLAYBOOK_DARES.length;
   const completedCount = completedSlugs.size;
   const pct = Math.round((completedCount / totalDares) * 100);
@@ -99,8 +99,8 @@ export default async function UserProfilePage({ params }: PageProps) {
         <section className="space-y-6">
           <h2 className="text-xl font-bold">🎯 Playbook Dares</h2>
           {Object.entries(LEVEL_LABELS).map(([levelKey, levelLabel]) => {
-            const levelDares = PLAYBOOK_DARES.filter((d) => d.level === levelKey);
-            const doneInLevel = levelDares.filter((d) => completedSlugs.has(d.slug));
+            const levelDares = PLAYBOOK_DARES.filter((d: { level: string; }) => d.level === levelKey);
+            const doneInLevel = levelDares.filter((d: { slug: unknown; }) => completedSlugs.has(d.slug));
             if (doneInLevel.length === 0) return null;
             return (
               <div key={levelKey} className="space-y-2">
@@ -108,7 +108,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                   {levelLabel} ({doneInLevel.length}/{levelDares.length})
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {doneInLevel.map((dare) => (
+                  {doneInLevel.map((dare: { slug: any; emoji: any; name: any; }) => (
                     <div key={dare.slug} className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm">
                       <span className="text-xl">{dare.emoji}</span>
                       <span className="text-zinc-200">{dare.name}</span>
@@ -127,7 +127,7 @@ export default async function UserProfilePage({ params }: PageProps) {
         <section className="space-y-3">
           <h2 className="text-xl font-bold">🤝 Community Dares ({communityCompletions.length})</h2>
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
-            {communityCompletions.map((c) => (
+            {communityCompletions.map((c: { id: any; darerUsername: any; }) => (
               <div key={c.id} className="px-4 py-3 flex items-center gap-3 text-sm">
                 <span className="text-zinc-400">Dared by</span>
                 <span className="font-medium text-white">u/{c.darerUsername}</span>

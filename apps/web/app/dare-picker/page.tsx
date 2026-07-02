@@ -10,7 +10,7 @@ export default function DarePickerPage() {
   const levelNames = Object.entries(LEVEL_LABELS).map(([key, label]) => ({
     key,
     label,
-    count: PLAYBOOK_DARES.filter((d) => d.level === key).length,
+    count: PLAYBOOK_DARES.filter((d: { level: string; }) => d.level === key).length,
   }));
 
   return (
