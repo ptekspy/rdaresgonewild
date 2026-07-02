@@ -19,17 +19,29 @@ function defaultApiUrl() {
 }
 
 function AdCreative({ ad }: { ad: PublicAd }) {
+  if (ad.imageUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={ad.imageUrl}
+        alt={ad.altText ?? ad.headline ?? "Sponsored ad"}
+        loading="lazy"
+        style={{
+          display: "block",
+          width: "100%",
+          maxWidth: "100%",
+          maxHeight: 150,
+          height: "auto",
+          objectFit: "contain",
+          objectPosition: "left center",
+          borderRadius: 8,
+        }}
+      />
+    );
+  }
+
   return (
     <>
-      {ad.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={ad.imageUrl}
-          alt={ad.altText ?? ad.headline ?? "Sponsored ad"}
-          loading="lazy"
-          style={{ display: "block", maxWidth: "100%", height: "auto", borderRadius: 8 }}
-        />
-      ) : null}
       {ad.headline ? <strong style={{ display: "block", color: "inherit" }}>{ad.headline}</strong> : null}
       {ad.body ? <span style={{ display: "block" }}>{ad.body}</span> : null}
       {ad.ctaText ? <span style={{ display: "inline-block", fontWeight: 700 }}>{ad.ctaText}</span> : null}
@@ -125,7 +137,7 @@ export function AdSlot({
   }
 
   return (
-    <div ref={wrapperRef} className={className} style={{ minHeight }}>
+    <div ref={wrapperRef} className={className} style={{ minHeight, maxHeight: ad.imageUrl ? 180 : undefined }}>
       <a
         href={ad.clickUrl}
         target="_blank"
@@ -134,6 +146,8 @@ export function AdSlot({
           display: "block",
           color: "inherit",
           textDecoration: "none",
+          maxHeight: ad.imageUrl ? 180 : undefined,
+          overflow: ad.imageUrl ? "hidden" : undefined,
         }}
       >
         <span

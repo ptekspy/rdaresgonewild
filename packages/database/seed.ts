@@ -88,7 +88,7 @@ async function upsertHouseCreative(campaignId: string) {
   });
 
   const data = {
-    type: CreativeType.IMAGE_TEXT,
+    type: CreativeType.IMAGE,
     status: CreativeStatus.APPROVED,
     category: AdultAdCategory.INTERNAL,
     imageUrl: HOUSE_AD_IMAGE_URL,
