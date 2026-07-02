@@ -83,44 +83,47 @@ export default async function DareAttemptsPage({ params, searchParams }: PagePro
   const levelLabel = LEVEL_LABELS[dare.level];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
-      <div className="space-y-4">
-        <Link href={`/dares/${dare.level}`} className="text-sm text-zinc-500 hover:text-zinc-300">
-          Back to {levelLabel} dares
+    <div className="rdgw-page-shell max-w-4xl py-10 space-y-8">
+      <section className="rdgw-card-strong rdgw-glow-border overflow-hidden p-6 sm:p-8">
+        <Link href={`/dares/${dare.level}`} className="rdgw-link text-sm font-bold">
+          ← Back to {levelLabel} dares
         </Link>
-        <div className="space-y-3">
-          <div className="flex items-start gap-3">
-            <span className="text-3xl leading-none">{dare.emoji}</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-zinc-500 font-mono">
-                {levelLabel} #{dare.dareOrder}
-              </p>
-              <h1 className="text-3xl font-bold">{dare.name}</h1>
-            </div>
+        <div className="mt-5 flex items-start gap-4">
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-white/[0.07] text-4xl leading-none">
+            {dare.emoji}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-mono text-xs uppercase tracking-wider text-zinc-500">
+              {levelLabel} #{dare.dareOrder}
+            </p>
+            <h1 className="mt-2 text-4xl font-black tracking-tight text-white sm:text-5xl">{dare.name}</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">{dare.description}</p>
           </div>
-          <p className="text-zinc-400 text-sm max-w-2xl">{dare.description}</p>
-          <p className="text-sm text-zinc-500">
-            {fmtNumber(totalAttempts)} tracked {totalAttempts === 1 ? "attempt" : "attempts"}
-          </p>
         </div>
-      </div>
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <span className="rounded-full border border-pink-500/30 bg-pink-500/[0.12] px-3 py-1 text-xs font-bold text-pink-100">
+            {fmtNumber(totalAttempts)} tracked {totalAttempts === 1 ? "attempt" : "attempts"}
+          </span>
+          <Link href="/dare-picker" className="rdgw-button-secondary px-4 py-2 text-sm">
+            Find another dare
+          </Link>
+        </div>
+      </section>
 
       <section className="space-y-3">
-        <h2 className="text-xl font-bold">Attempts</h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+        <h2 className="text-2xl font-black text-white">Attempts</h2>
+        <div className="rdgw-card overflow-hidden">
           {attempts.length === 0 ? (
-            <p className="px-4 py-12 text-center text-zinc-500 text-sm">
-              No attempts yet.
-            </p>
+            <p className="px-4 py-14 text-center text-sm text-zinc-500">No attempts yet.</p>
           ) : (
-            <div className="divide-y divide-zinc-800/50">
+            <div className="divide-y divide-white/[0.08]">
               {attempts.map((attempt) => (
-                <div key={attempt.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
+                <div key={attempt.id} className="flex flex-col gap-2 px-4 py-4 text-sm sm:flex-row sm:items-center sm:gap-4">
                   <div className="min-w-0 flex-1">
-                    <Link href={`/u/${attempt.username}`} className="font-medium text-white hover:text-red-400 transition-colors">
+                    <Link href={`/u/${attempt.username}`} className="font-bold text-white transition hover:text-pink-200">
                       u/{attempt.username}
                     </Link>
-                    <p className="text-zinc-500 truncate mt-0.5">{attempt.post.title}</p>
+                    <p className="mt-0.5 truncate text-zinc-500">{attempt.post.title}</p>
                   </div>
                   <div className="flex items-center gap-3 sm:justify-end">
                     <span className="text-xs text-zinc-600">{fmtDate(attempt.detectedAt)}</span>
@@ -128,7 +131,7 @@ export default async function DareAttemptsPage({ params, searchParams }: PagePro
                       href={attempt.post.permalink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                      className="rdgw-link text-xs font-bold"
                     >
                       view post
                     </a>
@@ -143,15 +146,15 @@ export default async function DareAttemptsPage({ params, searchParams }: PagePro
       {totalPages > 1 && (
         <div className="flex justify-center gap-2">
           {page > 1 && (
-            <Link href={`/dares/${dare.level}/${dare.slug}?page=${page - 1}`} className="px-3 py-1.5 text-sm border border-zinc-700 rounded hover:bg-zinc-800 transition-colors">
+            <Link href={`/dares/${dare.level}/${dare.slug}?page=${page - 1}`} className="rdgw-button-secondary px-4 py-2 text-sm">
               Prev
             </Link>
           )}
-          <span className="px-3 py-1.5 text-sm text-zinc-500">
+          <span className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-sm text-zinc-400">
             Page {page} / {totalPages}
           </span>
           {page < totalPages && (
-            <Link href={`/dares/${dare.level}/${dare.slug}?page=${page + 1}`} className="px-3 py-1.5 text-sm border border-zinc-700 rounded hover:bg-zinc-800 transition-colors">
+            <Link href={`/dares/${dare.level}/${dare.slug}?page=${page + 1}`} className="rdgw-button-secondary px-4 py-2 text-sm">
               Next
             </Link>
           )}

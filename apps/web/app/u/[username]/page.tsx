@@ -56,7 +56,7 @@ export default async function UserProfilePage({ params }: PageProps) {
     }),
   ]);
 
-  const completedSlugs = new Set(playbookCompletions.map((c) => c.dareSlug));
+  const completedSlugs = new Set(playbookCompletions.map((completion) => completion.dareSlug));
   const playbookCompletionBySlug = new Map(
     playbookCompletions.map((completion) => [completion.dareSlug, completion])
   );
@@ -64,94 +64,97 @@ export default async function UserProfilePage({ params }: PageProps) {
   const completedCount = completedSlugs.size;
   const pct = Math.round((completedCount / totalDares) * 100);
 
-  // Find highest level reached
   const completedDares = [...completedSlugs]
     .map((slug) => PLAYBOOK_BY_SLUG.get(slug))
     .filter(Boolean);
-  const maxLevel = completedDares.reduce((max, d) => Math.max(max, d!.levelOrder), 0);
+  const maxLevel = completedDares.reduce((max, dare) => Math.max(max, dare!.levelOrder), 0);
+  const highestLevel = maxLevel > 0 ? Object.values(LEVEL_LABELS)[maxLevel - 1] : null;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
-      {/* Header */}
-      <div className="space-y-4">
-        <Link href="/leaderboard" className="text-sm text-zinc-500 hover:text-zinc-300">
+    <div className="rdgw-page-shell max-w-5xl py-10 space-y-8">
+      <section className="rdgw-card-strong rdgw-glow-border overflow-hidden p-6 sm:p-8">
+        <Link href="/leaderboard" className="rdgw-link text-sm font-bold">
           ← Leaderboard
         </Link>
-        <div className="flex items-start justify-between gap-4">
+        <div className="mt-5 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold">u/{username}</h1>
-            {maxLevel > 0 && (
-              <p className="text-zinc-400 text-sm mt-1">
-                Highest level: <span className="text-red-400">{Object.values(LEVEL_LABELS)[maxLevel - 1]}</span>
+            <span className="rdgw-kicker">Creator profile</span>
+            <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">u/{username}</h1>
+            {highestLevel && (
+              <p className="mt-3 text-sm text-zinc-300">
+                Highest level: <span className="font-bold text-pink-100">{highestLevel}</span>
               </p>
             )}
           </div>
-          <div className="text-right space-y-3">
+          <div className="text-left md:text-right">
             <ProfilePersonalization username={username} />
-            <p className="text-2xl font-bold">{completedCount}<span className="text-zinc-600">/{totalDares}</span></p>
-            <p className="text-xs text-zinc-500">dares completed</p>
+            <p className="mt-3 text-4xl font-black text-white">
+              {completedCount}<span className="text-zinc-600">/{totalDares}</span>
+            </p>
+            <p className="text-xs uppercase tracking-wider text-zinc-500">dares completed</p>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="space-y-1">
-          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full transition-all"
-              style={{ width: `${pct}%` }}
-            />
+        <div className="mt-6 space-y-2">
+          <div className="rdgw-progress">
+            <div className="rdgw-progress-fill transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <p className="text-xs text-zinc-500 text-right">{pct}% of playbook complete</p>
+          <p className="text-right text-xs text-zinc-500">{pct}% of playbook complete</p>
         </div>
-      </div>
+      </section>
 
       {!user && (
-        <div className="px-4 py-8 bg-zinc-900 border border-zinc-800 rounded-xl text-center text-zinc-500 text-sm">
+        <div className="rdgw-card px-4 py-8 text-center text-sm text-zinc-500">
           This user hasn't been synced yet. Visit{" "}
-          <Link href="/dare-picker" className="text-red-500 hover:text-red-400">Dare Picker</Link>{" "}
+          <Link href="/dare-picker" className="rdgw-link font-bold">Dare Picker</Link>{" "}
           and enter their username to sync their history.
         </div>
       )}
 
       {completedCount === 0 && user && (
-        <div className="px-4 py-8 bg-zinc-900 border border-zinc-800 rounded-xl text-center text-zinc-500 text-sm">
+        <div className="rdgw-card px-4 py-8 text-center text-sm text-zinc-500">
           No playbook completions detected yet. Posts must have "Dared by" flair on r/daresgonewild.
         </div>
       )}
 
       <AdSlot slotKey="profile_sidebar" />
 
-      {/* Playbook completions by level */}
       {completedCount > 0 && (
         <section className="space-y-6">
-          <h2 className="text-xl font-bold">🎯 Playbook Dares</h2>
+          <h2 className="text-2xl font-black text-white">Playbook dares</h2>
           {Object.entries(LEVEL_LABELS).map(([levelKey, levelLabel]) => {
-            const levelDares = PLAYBOOK_DARES.filter((d) => d.level === levelKey);
-            const doneInLevel = levelDares.filter((d) => completedSlugs.has(d.slug));
+            const levelDares = PLAYBOOK_DARES.filter((dare) => dare.level === levelKey);
+            const doneInLevel = levelDares.filter((dare) => completedSlugs.has(dare.slug));
             if (doneInLevel.length === 0) return null;
             return (
-              <div key={levelKey} className="space-y-2">
-                <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-                  {levelLabel} ({doneInLevel.length}/{levelDares.length})
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div key={levelKey} className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+                    {levelLabel}
+                  </h3>
+                  <span className="rounded-full bg-white/[0.07] px-3 py-1 text-xs font-bold text-zinc-400">
+                    {doneInLevel.length}/{levelDares.length}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {doneInLevel.map((dare) => {
                     const completion = playbookCompletionBySlug.get(dare.slug);
                     return (
-                      <div key={dare.slug} className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm">
-                        <span className="text-xl">{dare.emoji}</span>
-                        <span className="text-zinc-200">{dare.name}</span>
-                        {completion?.post.permalink && (
+                      <div key={dare.slug} className="rdgw-card flex items-center gap-3 rounded-2xl p-3 text-sm">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-xl">{dare.emoji}</span>
+                        <span className="min-w-0 flex-1 truncate font-semibold text-zinc-200">{dare.name}</span>
+                        {completion?.post.permalink ? (
                           <a
                             href={completion.post.permalink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="ml-auto text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                            className="rdgw-link shrink-0 text-xs font-bold"
                           >
-                            view post →
+                            view →
                           </a>
+                        ) : (
+                          <span className="shrink-0 text-xs font-bold text-pink-200">✓</span>
                         )}
-                        {!completion?.post.permalink && <span className="ml-auto text-green-500 text-xs">✓</span>}
                       </div>
                     );
                   })}
@@ -162,20 +165,19 @@ export default async function UserProfilePage({ params }: PageProps) {
         </section>
       )}
 
-      {/* Community dares */}
       {communityCompletions.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-xl font-bold">🤝 Community Dares ({communityCompletions.length})</h2>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
-            {communityCompletions.map((c) => (
-              <div key={c.id} className="px-4 py-3 flex items-center gap-3 text-sm">
+          <h2 className="text-2xl font-black text-white">Community dares ({communityCompletions.length})</h2>
+          <div className="rdgw-card divide-y divide-white/[0.08] overflow-hidden">
+            {communityCompletions.map((completion) => (
+              <div key={completion.id} className="flex items-center gap-3 px-4 py-3 text-sm">
                 <span className="text-zinc-400">Dared by</span>
-                <span className="font-medium text-white">u/{c.darerUsername}</span>
+                <span className="font-bold text-white">u/{completion.darerUsername}</span>
                 <a
-                  href={c.post.permalink}
+                  href={completion.post.permalink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="ml-auto text-xs text-zinc-600 hover:text-zinc-400"
+                  className="rdgw-link ml-auto text-xs font-bold"
                 >
                   view →
                 </a>

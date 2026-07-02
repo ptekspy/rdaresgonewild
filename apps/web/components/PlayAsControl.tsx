@@ -39,15 +39,12 @@ export function PlayAsControl() {
             setError("");
           }}
           placeholder="u/username"
-          className="w-32 sm:w-40 px-2.5 py-1.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+          className="w-32 rounded-full border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-white placeholder-zinc-600 outline-none transition focus:border-pink-500/70 sm:w-40"
           autoComplete="off"
           spellCheck={false}
           autoFocus
         />
-        <button
-          type="submit"
-          className="px-2.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-md text-xs font-medium"
-        >
+        <button type="submit" className="rdgw-button-primary px-3 py-2 text-xs">
           Save
         </button>
         <button
@@ -57,12 +54,12 @@ export function PlayAsControl() {
             setError("");
             setInput(activeUsername ? `u/${activeUsername}` : "");
           }}
-          className="px-2 py-1.5 text-zinc-500 hover:text-zinc-300 text-xs"
+          className="rounded-full px-2 py-2 text-xs text-zinc-500 transition hover:bg-white/[0.07] hover:text-zinc-200"
         >
           Cancel
         </button>
         {error && (
-          <span className="absolute right-0 top-9 w-48 rounded-md border border-red-900 bg-red-950 px-2 py-1 text-xs text-red-200 shadow-lg">
+          <span className="absolute right-0 top-11 z-20 w-48 rounded-2xl border border-pink-500/30 bg-[#1b0d1b] px-3 py-2 text-xs text-pink-100 shadow-xl">
             {error}
           </span>
         )}
@@ -75,7 +72,7 @@ export function PlayAsControl() {
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="px-3 py-1.5 rounded-md border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 text-xs sm:text-sm transition-colors"
+        className="rounded-full border border-white/10 bg-white/[0.035] px-3.5 py-2 text-xs font-semibold text-zinc-300 transition hover:border-pink-500/40 hover:text-white sm:text-sm"
       >
         Play As u/
       </button>
@@ -86,21 +83,21 @@ export function PlayAsControl() {
     <div className="flex items-center gap-1 text-xs sm:text-sm">
       <Link
         href={`/u/${activeUsername}`}
-        className="max-w-36 truncate px-3 py-1.5 rounded-md border border-red-950 bg-red-950/40 text-red-200 hover:text-white hover:border-red-800 transition-colors"
+        className="max-w-40 truncate rounded-full border border-pink-500/30 bg-pink-500/[0.12] px-3 py-2 font-semibold text-pink-100 transition hover:border-orange-400/40 hover:text-white"
       >
-        Playing as u/{activeUsername}
+        u/{activeUsername}
       </Link>
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="px-2 py-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+        className="rounded-full px-2 py-2 text-zinc-500 transition hover:bg-white/[0.07] hover:text-zinc-200"
       >
         Change
       </button>
       <button
         type="button"
         onClick={clearPlayAsUsername}
-        className="px-2 py-1.5 rounded-md text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+        className="rounded-full px-2 py-2 text-zinc-600 transition hover:bg-white/[0.07] hover:text-zinc-300"
       >
         Clear
       </button>

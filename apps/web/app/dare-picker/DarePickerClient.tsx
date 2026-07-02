@@ -130,17 +130,22 @@ export function DarePickerClient({ totalDares, levelNames, requirementOptions }:
     : null;
   const minLevelName = levelNames[minLevel - 1]?.label ?? `Level ${minLevel}`;
   const maxLevelName = levelNames[maxLevel - 1]?.label ?? `Level ${maxLevel}`;
+  const completionPct = result ? Math.round((result.completedCount / totalDares) * 100) : 0;
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex gap-2">
+      <form onSubmit={handleSubmit} className="rdgw-card p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <label className="sr-only" htmlFor="dare-picker-username">
+            Reddit username
+          </label>
           <input
+            id="dare-picker-username"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="u/YourRedditUsername"
-            className="flex-1 px-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-red-500 transition-colors"
+            className="min-h-12 flex-1 rounded-2xl border border-white/10 bg-white/[0.045] px-4 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-pink-500/70 focus:ring-4 focus:ring-pink-500/10"
             disabled={loading}
             autoComplete="off"
             spellCheck={false}
@@ -148,18 +153,18 @@ export function DarePickerClient({ totalDares, levelNames, requirementOptions }:
           <button
             type="submit"
             disabled={loading || !username.trim()}
-            className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition-colors"
+            className="rdgw-button-primary min-h-12 px-6 text-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            {loading ? "..." : "Pick Dare"}
+            {loading ? "Picking..." : "Pick dare"}
           </button>
         </div>
 
-        <div className="space-y-3">
-          <details className="bg-zinc-900 border border-zinc-800 rounded-lg">
-            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-white">
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <details className="rounded-2xl border border-white/10 bg-white/[0.035]">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-white">
               Spiciness: Level {minLevel}-{maxLevel}
             </summary>
-            <div className="px-4 pb-4 pt-1 space-y-4">
+            <div className="space-y-4 px-4 pb-4 pt-1">
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3 text-xs text-zinc-400">
                   <span>Minimum</span>
@@ -173,7 +178,7 @@ export function DarePickerClient({ totalDares, levelNames, requirementOptions }:
                   max={MAX_LEVEL}
                   value={minLevel}
                   onChange={(e) => updateMinLevel(Number(e.target.value))}
-                  className="w-full accent-red-500"
+                  className="w-full accent-pink-500"
                 />
               </div>
 
@@ -190,43 +195,43 @@ export function DarePickerClient({ totalDares, levelNames, requirementOptions }:
                   max={MAX_LEVEL}
                   value={maxLevel}
                   onChange={(e) => updateMaxLevel(Number(e.target.value))}
-                  className="w-full accent-red-500"
+                  className="w-full accent-pink-500"
                 />
               </div>
             </div>
           </details>
 
-          <details className="bg-zinc-900 border border-zinc-800 rounded-lg">
-            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-white">
+          <details className="rounded-2xl border border-white/10 bg-white/[0.035]">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-white">
               Requirements
               {selectedRequirements.length > 0 && (
-                <span className="ml-2 text-xs text-red-400">
+                <span className="ml-2 rounded-full bg-pink-500/[0.12] px-2 py-0.5 text-xs text-pink-200">
                   {selectedRequirements.length} selected
                 </span>
               )}
             </summary>
-            <div className="px-4 pb-4 pt-1 space-y-3">
+            <div className="space-y-3 px-4 pb-4 pt-1">
               {selectedRequirements.length < requirementOptions.length && (
                 <button
                   type="button"
                   onClick={selectAllRequirements}
-                  className="text-xs text-zinc-400 hover:text-white transition-colors"
+                  className="text-xs font-semibold text-zinc-400 transition hover:text-white"
                 >
-                  Clear filters
+                  Select all requirements
                 </button>
               )}
 
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
                 {requirementOptions.map((requirement) => (
                   <label
                     key={requirement.id}
-                    className="flex min-h-10 items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300"
+                    className="flex min-h-10 items-center gap-3 rounded-xl border border-white/[0.08] bg-[#090b16]/70 px-3 py-2 text-sm text-zinc-300"
                   >
                     <input
                       type="checkbox"
                       checked={selectedRequirementSet.has(requirement.id)}
                       onChange={() => toggleRequirement(requirement.id)}
-                      className="h-4 w-4 accent-red-500"
+                      className="h-4 w-4 accent-pink-500"
                     />
                     <span>{requirement.label}</span>
                   </label>
@@ -238,25 +243,25 @@ export function DarePickerClient({ totalDares, levelNames, requirementOptions }:
       </form>
 
       {error && (
-        <div className="px-4 py-3 bg-red-950 border border-red-800 rounded-lg text-sm text-red-300">
+        <div className="rounded-2xl border border-pink-500/30 bg-pink-950/30 px-4 py-3 text-sm text-pink-100">
           {error}
         </div>
       )}
 
       {result?.status === "no_dares_left" && (
-        <div className="px-4 py-8 bg-zinc-900 border border-zinc-800 rounded-xl text-center space-y-3">
-          <div className="text-4xl">🏆</div>
-          <p className="text-white font-bold text-xl">No matching dares</p>
-          <p className="text-zinc-400 text-sm">
+        <div className="rdgw-card px-4 py-10 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/[0.07] text-3xl">🏆</div>
+          <p className="text-xl font-black text-white">No matching dares</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-zinc-400">
             u/{normaliseUsername(username)} has no unplayed dares in this filter range.
           </p>
         </div>
       )}
 
       {result?.status === "done" && result.dare && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-5 pt-5 flex flex-wrap items-center gap-2">
-            <span className="px-2 py-0.5 bg-red-950 text-red-400 text-xs font-medium rounded border border-red-900">
+        <div className="rdgw-card-strong rdgw-glow-border overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 px-5 pt-5">
+            <span className="rounded-full border border-pink-500/30 bg-pink-500/[0.12] px-3 py-1 text-xs font-bold text-pink-100">
               Level {result.dare.levelOrder} · {levelLabel}
             </span>
             <span className="text-xs text-zinc-500">
@@ -267,38 +272,37 @@ export function DarePickerClient({ totalDares, levelNames, requirementOptions }:
             </span>
           </div>
 
-          <div className="px-5 py-5 space-y-2">
-            <div className="flex items-start gap-3">
-              <span className="text-4xl">{result.dare.emoji}</span>
+          <div className="px-5 py-6">
+            <div className="flex items-start gap-4">
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-white/[0.07] text-4xl">
+                {result.dare.emoji}
+              </span>
               <div>
-                <h2 className="text-xl font-bold text-white">{result.dare.name}</h2>
-                <p className="text-zinc-400 text-sm leading-relaxed mt-1">{result.dare.description}</p>
+                <h2 className="text-2xl font-black text-white">{result.dare.name}</h2>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">{result.dare.description}</p>
               </div>
             </div>
           </div>
 
           <div className="px-5 pb-2">
-            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-red-500 rounded-full transition-all"
-                style={{ width: `${(result.completedCount / totalDares) * 100}%` }}
-              />
+            <div className="rdgw-progress">
+              <div className="rdgw-progress-fill transition-all" style={{ width: `${completionPct}%` }} />
             </div>
           </div>
 
-          <div className="px-5 py-4 border-t border-zinc-800 flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 border-t border-white/10 px-5 py-4">
             <a
               href={`https://www.reddit.com/r/daresgonewild/submit/?title=${encodeURIComponent(`${result.dare.emoji} ${result.dare.name} [Dared by the playbook]`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-lg transition-colors"
+              className="rdgw-button-primary px-4 py-2 text-sm"
             >
-              I completed it! →
+              I completed it →
             </a>
             <button
               type="button"
               onClick={() => pick(username)}
-              className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white text-sm rounded-lg transition-colors"
+              className="rdgw-button-secondary px-4 py-2 text-sm"
             >
               Pick again
             </button>
