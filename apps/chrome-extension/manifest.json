@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Paid Politely Reddit Sync",
-  "description": "Crawl the Reddit page you are viewing and sync post details to Paid Politely.",
-  "version": "0.2.2",
+  "description": "Crawl Reddit pages and subreddit cycles, then sync post details to Paid Politely.",
+  "version": "0.2.5",
   "action": {
     "default_title": "Paid Politely Reddit Sync",
     "default_popup": "popup.html"

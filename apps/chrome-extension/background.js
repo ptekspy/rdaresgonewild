@@ -1,6 +1,9 @@
 const STORAGE_KEYS = {
   installId: "installId",
   statePrefix: "syncState:",
+  subredditCycleConfig: "subredditCycleConfig",
+  subredditCycleProgress: "subredditCycleProgress",
+  urlScanHistory: "urlScanHistory",
 };
 
 const DEFAULT_STATE = {
@@ -15,21 +18,37 @@ const DEFAULT_STATE = {
   postsSynced: 0,
   message: "Ready.",
   tabId: null,
+  cyclePhase: "idle",
+  activeSubreddit: "",
+  activeSort: "",
+  completedUrls: 0,
+  skippedUrls: 0,
+  totalUrls: 0,
 };
 
 const FETCH_CONCURRENCY = 4;
 const UPLOAD_BATCH_SIZE = 25;
 const UPLOAD_FLUSH_MS = 2500;
+const SCAN_COOLDOWN_MS = 60 * 60 * 1000;
+const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const IDLE_CYCLE_WAIT_MS = 60 * 1000;
+const LOAD_SETTLE_MS = 2000;
+
+const INITIAL_SORTS = ["hot", "best", "new", "top"];
+const ONGOING_SORTS = ["new"];
 
 const pipelinesByTabId = new Map();
 const pipelinesByCrawlId = new Map();
+const cyclesByTabId = new Map();
 
 chrome.runtime.onInstalled.addListener(async () => {
   await ensureInstallId();
 });
 
 chrome.runtime.onMessage.addListener((payload, _sender, sendResponse) => {
-  handleMessage(payload).then(sendResponse);
+  handleMessage(payload).then(sendResponse).catch((error) => {
+    sendResponse({ ...DEFAULT_STATE, status: "error", message: String(error?.message || error) });
+  });
   return true;
 });
 
@@ -40,6 +59,17 @@ async function handleMessage(payload) {
     return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
   }
 
+  if (payload?.type === "GET_SUBREDDIT_CYCLE_CONFIG") {
+    return getSubredditCycleConfig();
+  }
+
+  if (payload?.type === "SAVE_SUBREDDIT_CYCLE_CONFIG") {
+    const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
+    const subreddits = parseSubredditList(payload.subreddits || []);
+    const config = await setSubredditCycleConfig({ apiBase, subreddits });
+    return { ok: true, config };
+  }
+
   if (payload?.type === "START_PAGE_CRAWL") {
     const pageUrl = String(payload.pageUrl || "");
     const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
@@ -48,6 +78,13 @@ async function handleMessage(payload) {
       return Number.isInteger(tabId)
         ? setState(tabId, { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." })
         : { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." };
+    }
+
+    if (cyclesByTabId.has(tabId)) {
+      return setState(tabId, {
+        status: "error",
+        message: "This tab has a subreddit cycle running. Stop it before starting a page crawl.",
+      });
     }
 
     const existingPipeline = pipelinesByTabId.get(tabId);
@@ -65,7 +102,7 @@ async function handleMessage(payload) {
       mode: "page",
       apiBase,
       pageUrl,
-      username: inferUsernameFromUrl(pageUrl) || "",
+      username: inferUsernameFromUrl(pageUrl) || inferSubreddit(pageUrl) || "",
       pagesScanned: 0,
       postsSynced: 0,
       message: "Starting concurrent scroll, parse, and upload...",
@@ -78,10 +115,66 @@ async function handleMessage(payload) {
         activePipeline.scrollComplete = true;
       }
 
-      await setState(tabId, {
+      await setState(tabId, { status: "error", message: String(error?.message || error) });
+    });
+
+    return state;
+  }
+
+  if (payload?.type === "START_SUBREDDIT_CYCLE") {
+    if (!Number.isInteger(tabId)) {
+      return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
+    }
+
+    const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
+    const subreddits = parseSubredditList(payload.subreddits || []);
+
+    if (subreddits.length === 0) {
+      return setState(tabId, {
+        ...DEFAULT_STATE,
+        tabId,
         status: "error",
-        message: String(error?.message || error),
+        message: "Add at least one subreddit before starting the cycle.",
       });
+    }
+
+    if (cyclesByTabId.has(tabId)) {
+      return setState(tabId, {
+        status: "error",
+        message: "This tab already has a subreddit cycle running.",
+      });
+    }
+
+    const existingPipeline = pipelinesByTabId.get(tabId);
+    if (existingPipeline && !existingPipeline.finalising) {
+      return setState(tabId, {
+        status: "error",
+        message: "This tab already has a crawl running. Stop it before starting the cycle.",
+      });
+    }
+
+    await setSubredditCycleConfig({ apiBase, subreddits });
+
+    const state = await setState(tabId, {
+      ...DEFAULT_STATE,
+      tabId,
+      status: "running",
+      mode: "cycle",
+      apiBase,
+      pageUrl: "",
+      username: "subreddit-cycle",
+      pagesScanned: 0,
+      postsSynced: 0,
+      cyclePhase: "starting",
+      completedUrls: 0,
+      skippedUrls: 0,
+      totalUrls: 0,
+      message: `Starting subreddit cycle for ${subreddits.length} subreddit${subreddits.length === 1 ? "" : "s"}...`,
+    });
+
+    runSubredditCycle(tabId, { apiBase, subreddits }).catch(async (error) => {
+      cyclesByTabId.delete(tabId);
+      await setState(tabId, { status: "error", message: String(error?.message || error) });
     });
 
     return state;
@@ -92,20 +185,35 @@ async function handleMessage(payload) {
       return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
     }
 
+    const cycle = cyclesByTabId.get(tabId);
+    if (cycle) {
+      cycle.stopRequested = true;
+      if (cycle.idleTimer) clearTimeout(cycle.idleTimer);
+    }
+
     const pipeline = pipelinesByTabId.get(tabId);
-    if (!pipeline) {
+    if (pipeline) {
+      pipeline.stopRequested = true;
+      await requestPageCrawlerStop(tabId);
       return setState(tabId, {
-        status: "idle",
-        message: "No crawl is running for this tab.",
+        status: "running",
+        message: cycle
+          ? "Stopping subreddit cycle and finishing queued uploads..."
+          : "Stopping scroll and finishing queued uploads...",
       });
     }
 
-    pipeline.stopRequested = true;
-    await requestPageCrawlerStop(tabId);
+    if (cycle) {
+      cyclesByTabId.delete(tabId);
+      return setState(tabId, {
+        status: "idle",
+        message: "Subreddit cycle stopped.",
+      });
+    }
 
     return setState(tabId, {
-      status: "running",
-      message: "Stopping scroll and finishing queued uploads...",
+      status: "idle",
+      message: "No crawl is running for this tab.",
     });
   }
 
@@ -127,14 +235,253 @@ async function handleMessage(payload) {
   return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
 }
 
-async function runPageCrawl(tabId, initialState) {
+async function runSubredditCycle(tabId, config) {
+  const subreddits = parseSubredditList(config.subreddits);
+  const fingerprint = subreddits.join("|").toLowerCase();
+  const progress = await getSubredditCycleProgress();
+  const initialAlreadyCompleted = progress.fingerprint === fingerprint && progress.initialCompleted === true;
+
+  const cycle = {
+    id: crypto.randomUUID(),
+    tabId,
+    apiBase: config.apiBase,
+    subreddits,
+    fingerprint,
+    stopRequested: false,
+    idleTimer: null,
+    completedUrls: 0,
+    skippedUrls: 0,
+    totalPostsSynced: 0,
+  };
+
+  cyclesByTabId.set(tabId, cycle);
+
+  try {
+    if (!initialAlreadyCompleted) {
+      const initialUrls = buildScanQueue(subreddits, INITIAL_SORTS);
+      await setState(tabId, {
+        status: "running",
+        mode: "cycle",
+        cyclePhase: "initial",
+        totalUrls: initialUrls.length,
+        completedUrls: 0,
+        skippedUrls: 0,
+        message: `Initial pass: scanning hot, best, new, and top for ${subreddits.length} subreddit${subreddits.length === 1 ? "" : "s"}.`,
+      });
+
+      await runScanQueue(cycle, initialUrls, "initial");
+
+      if (cycle.stopRequested) return;
+
+      await setSubredditCycleProgress({ fingerprint, initialCompleted: true, completedAt: Date.now() });
+      await setState(tabId, {
+        cyclePhase: "new",
+        message: "Initial pass complete. Switching to new-only cycle.",
+      });
+    }
+
+    while (!cycle.stopRequested) {
+      const newUrls = buildScanQueue(subreddits, ONGOING_SORTS);
+
+      await setState(tabId, {
+        status: "running",
+        mode: "cycle",
+        cyclePhase: "new",
+        totalUrls: newUrls.length,
+        completedUrls: 0,
+        skippedUrls: 0,
+        message: `New-only cycle: checking ${newUrls.length} subreddit URL${newUrls.length === 1 ? "" : "s"}.`,
+      });
+
+      cycle.completedUrls = 0;
+      cycle.skippedUrls = 0;
+      await runScanQueue(cycle, newUrls, "new");
+
+      if (cycle.stopRequested) return;
+
+      const scannedThisRound = cycle.completedUrls;
+      if (scannedThisRound <= 0) {
+        await setState(tabId, {
+          status: "running",
+          mode: "cycle",
+          cyclePhase: "waiting",
+          message: "All new URLs were scanned less than an hour ago. Waiting before checking again...",
+        });
+        await waitForCycleIdle(cycle, IDLE_CYCLE_WAIT_MS);
+      }
+    }
+  } finally {
+    if (cycle.idleTimer) clearTimeout(cycle.idleTimer);
+    cyclesByTabId.delete(tabId);
+
+    const current = await getState(tabId);
+    if (current.status === "running" || current.mode === "cycle") {
+      await setState(tabId, {
+        status: "idle",
+        mode: "cycle",
+        cyclePhase: "idle",
+        message: cycle.stopRequested ? "Subreddit cycle stopped." : "Subreddit cycle finished.",
+      });
+    }
+  }
+}
+
+async function runScanQueue(cycle, scanQueue, phase) {
+  const total = scanQueue.length;
+
+  for (let index = 0; index < scanQueue.length; index++) {
+    if (cycle.stopRequested) return;
+
+    const scan = scanQueue[index];
+    const cooldown = await getUrlCooldown(scan.url);
+
+    if (cooldown.remainingMs > 0) {
+      cycle.skippedUrls++;
+      await setState(cycle.tabId, {
+        mode: "cycle",
+        cyclePhase: phase,
+        activeSubreddit: scan.subreddit,
+        activeSort: scan.sort,
+        totalUrls: total,
+        completedUrls: cycle.completedUrls,
+        skippedUrls: cycle.skippedUrls,
+        message: `Skipping r/${scan.subreddit}/${scan.sort}; scanned ${formatDuration(cooldown.ageMs)} ago.`,
+      });
+      continue;
+    }
+
+    await setState(cycle.tabId, {
+      status: "running",
+      mode: "cycle",
+      cyclePhase: phase,
+      activeSubreddit: scan.subreddit,
+      activeSort: scan.sort,
+      totalUrls: total,
+      completedUrls: cycle.completedUrls,
+      skippedUrls: cycle.skippedUrls,
+      pageUrl: scan.url,
+      message: `${phase === "initial" ? "Initial pass" : "New-only cycle"}: opening r/${scan.subreddit}/${scan.sort} (${index + 1}/${total})...`,
+    });
+
+    await navigateTabAndWait(cycle.tabId, scan.url);
+
+    if (cycle.stopRequested) return;
+
+    const currentState = await getState(cycle.tabId);
+    const crawlState = {
+      ...currentState,
+      status: "running",
+      mode: "cycle",
+      apiBase: cycle.apiBase,
+      pageUrl: scan.url,
+      username: scan.subreddit,
+      activeSubreddit: scan.subreddit,
+      activeSort: scan.sort,
+      message: `Scanning r/${scan.subreddit}/${scan.sort}...`,
+    };
+
+    await setState(cycle.tabId, crawlState);
+
+    const result = await runPageCrawl(cycle.tabId, crawlState, {
+      postCountOffset: cycle.totalPostsSynced,
+      crawlerOptions: {
+        waitMs: 1500,
+        stableRounds: phase === "initial" ? 25 : 15,
+        maxScrolls: phase === "initial" ? 2500 : 600,
+      },
+    });
+
+    cycle.totalPostsSynced += result.postsReceived || 0;
+    cycle.completedUrls++;
+    await markUrlScanned(scan.url);
+
+    await setState(cycle.tabId, {
+      status: "running",
+      mode: "cycle",
+      cyclePhase: phase,
+      postsSynced: cycle.totalPostsSynced,
+      completedUrls: cycle.completedUrls,
+      skippedUrls: cycle.skippedUrls,
+      totalUrls: total,
+      message: `Finished r/${scan.subreddit}/${scan.sort}. Synced ${cycle.totalPostsSynced} posts this cycle.`,
+    });
+  }
+}
+
+function buildScanQueue(subreddits, sorts) {
+  const queue = [];
+
+  for (const subreddit of subreddits) {
+    for (const sort of sorts) {
+      queue.push({ subreddit, sort, url: buildSubredditUrl(subreddit, sort) });
+    }
+  }
+
+  return queue;
+}
+
+function buildSubredditUrl(subreddit, sort) {
+  const safeSubreddit = normaliseSubredditName(subreddit);
+  const safeSort = String(sort || "new").toLowerCase();
+
+  if (safeSort === "top") return `https://www.reddit.com/r/${safeSubreddit}/top/?t=all`;
+  return `https://www.reddit.com/r/${safeSubreddit}/${safeSort}/`;
+}
+
+async function navigateTabAndWait(tabId, url) {
+  await chrome.tabs.update(tabId, { url, active: true });
+  await waitForTabComplete(tabId, url, 45000);
+  await sleep(LOAD_SETTLE_MS);
+}
+
+function waitForTabComplete(tabId, expectedUrl, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => finish(new Error(`Timed out loading ${expectedUrl}`)), timeoutMs);
+
+    function finish(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(listener);
+      if (error) reject(error);
+      else resolve();
+    }
+
+    function listener(updatedTabId, changeInfo, tab) {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status !== "complete") return;
+
+      const currentUrl = tab?.url || "";
+      if (isSameScanUrl(currentUrl, expectedUrl)) finish();
+    }
+
+    chrome.tabs.onUpdated.addListener(listener);
+
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) return;
+      if (tab?.status === "complete" && isSameScanUrl(tab.url || "", expectedUrl)) finish();
+    });
+  });
+}
+
+function waitForCycleIdle(cycle, ms) {
+  return new Promise((resolve) => {
+    cycle.idleTimer = setTimeout(() => {
+      cycle.idleTimer = null;
+      resolve();
+    }, ms);
+  });
+}
+
+async function runPageCrawl(tabId, initialState, options = {}) {
   let pipelineForThisRun = null;
 
   try {
     const installId = await ensureInstallId();
 
     const sessionResponse = await postJson(`${initialState.apiBase}/api/v1/extension/sessions`, {
-      crawlMode: "page",
+      crawlMode: initialState.mode === "cycle" ? "subreddit_cycle" : "page",
       redditUsername: initialState.username || undefined,
       sourceUrl: initialState.pageUrl,
       extensionInstallId: installId,
@@ -142,23 +489,25 @@ async function runPageCrawl(tabId, initialState) {
     });
 
     const state = await setState(tabId, {
+      ...initialState,
       sessionId: sessionResponse.session.id,
       uploadToken: sessionResponse.uploadToken,
-      message: "Scrolling, parsing, and uploading concurrently...",
+      message: initialState.mode === "cycle" ? initialState.message : "Scrolling, parsing, and uploading concurrently...",
     });
 
-    pipelineForThisRun = createPipeline(tabId, state);
+    pipelineForThisRun = createPipeline(tabId, state, options.postCountOffset || 0);
     pipelinesByTabId.set(tabId, pipelineForThisRun);
     pipelinesByCrawlId.set(pipelineForThisRun.id, pipelineForThisRun);
 
+    const crawlerOptions = options.crawlerOptions || {};
     await startStreamingPageCrawler(tabId, {
       crawlId: pipelineForThisRun.id,
-      waitMs: 1500,
-      stableRounds: 25,
-      maxScrolls: 2500,
+      waitMs: crawlerOptions.waitMs || 1500,
+      stableRounds: crawlerOptions.stableRounds || 25,
+      maxScrolls: crawlerOptions.maxScrolls || 2500,
     });
 
-    await new Promise((resolve) => {
+    return await new Promise((resolve) => {
       pipelineForThisRun.resolveComplete = resolve;
     });
   } finally {
@@ -171,11 +520,12 @@ async function runPageCrawl(tabId, initialState) {
   }
 }
 
-function createPipeline(tabId, state) {
+function createPipeline(tabId, state, postCountOffset = 0) {
   return {
     id: crypto.randomUUID(),
     tabId,
     state,
+    postCountOffset,
     seenLinks: new Set(),
     linkQueue: [],
     postBatch: [],
@@ -186,6 +536,7 @@ function createPipeline(tabId, state) {
     stopRequested: false,
     skipped: 0,
     latestScrolls: 0,
+    latestPostsReceived: 0,
     flushTimer: null,
     resolveComplete: () => {},
   };
@@ -219,13 +570,15 @@ async function handlePageLinks(payload) {
   }
 
   pipeline.latestScrolls = Number(payload.scrolls) || pipeline.latestScrolls;
+  const currentMessage =
+    newLinks.length > 0
+      ? `Scrolling... found ${pipeline.seenLinks.size} links, queued ${pipeline.linkQueue.length}.`
+      : `Scrolling... parsed ${pipeline.seenLinks.size} links, uploading in parallel.`;
 
   pipeline.state = await setState(pipeline.tabId, {
     pagesScanned: pipeline.latestScrolls,
-    message:
-      newLinks.length > 0
-        ? `Scrolling... found ${pipeline.seenLinks.size} links, queued ${pipeline.linkQueue.length}.`
-        : `Scrolling... parsed ${pipeline.seenLinks.size} links, uploading in parallel.`,
+    postsSynced: pipeline.postCountOffset + pipeline.latestPostsReceived,
+    message: pipeline.state.mode === "cycle" ? `${pipeline.state.activeSubreddit}/${pipeline.state.activeSort}: ${currentMessage}` : currentMessage,
   });
 
   pumpLinkQueue(pipeline);
@@ -240,6 +593,7 @@ async function handlePageDone(payload) {
   pipeline.latestScrolls = Number(payload.scrolls) || pipeline.latestScrolls;
   pipeline.state = await setState(pipeline.tabId, {
     pagesScanned: pipeline.latestScrolls,
+    postsSynced: pipeline.postCountOffset + pipeline.latestPostsReceived,
     message: "Reached the end of lazy loading. Finishing queued uploads...",
   });
 
@@ -315,9 +669,10 @@ function maybeFlushUpload(pipeline) {
   uploadBatch(pipeline.state, posts, false)
     .then(async (upload) => {
       if (!isActivePipeline(pipeline)) return;
+      pipeline.latestPostsReceived = Number(upload.session.postsReceived) || pipeline.latestPostsReceived;
       pipeline.state = await setState(pipeline.tabId, {
-        postsSynced: upload.session.postsReceived,
-        message: `Scrolling, parsing, uploading... synced ${upload.session.postsReceived} posts.`,
+        postsSynced: pipeline.postCountOffset + pipeline.latestPostsReceived,
+        message: `Scrolling, parsing, uploading... synced ${pipeline.postCountOffset + pipeline.latestPostsReceived} posts.`,
       });
     })
     .catch(async (error) => {
@@ -354,24 +709,31 @@ function maybeFinalizePipeline(pipeline) {
   uploadBatch(pipeline.state, posts, true)
     .then(async (upload) => {
       if (!isActivePipeline(pipeline)) return;
+      pipeline.latestPostsReceived = Number(upload.session.postsReceived) || pipeline.latestPostsReceived;
+      const totalPosts = pipeline.postCountOffset + pipeline.latestPostsReceived;
+
       await setState(pipeline.tabId, {
-        status: pipeline.stopRequested ? "idle" : "completed",
+        status: pipeline.state.mode === "cycle" ? "running" : pipeline.stopRequested ? "idle" : "completed",
         pagesScanned: pipeline.latestScrolls,
-        postsSynced: upload.session.postsReceived,
+        postsSynced: totalPosts,
         message: pipeline.stopRequested
-          ? `Stopped. Synced ${upload.session.postsReceived} posts.`
-          : `Completed. Synced ${upload.session.postsReceived} posts from ${pipeline.seenLinks.size} links${
+          ? `Stopped. Synced ${totalPosts} posts.`
+          : `Completed. Synced ${totalPosts} posts from ${pipeline.seenLinks.size} links${
               pipeline.skipped ? `, skipped ${pipeline.skipped}` : ""
             }.`,
+      });
+
+      pipeline.resolveComplete({
+        postsReceived: pipeline.latestPostsReceived,
+        totalPosts,
+        stopped: pipeline.stopRequested,
       });
     })
     .catch(async (error) => {
       if (isActivePipeline(pipeline)) {
         await setState(pipeline.tabId, { status: "error", message: String(error?.message || error) });
       }
-    })
-    .finally(() => {
-      pipeline.resolveComplete();
+      pipeline.resolveComplete({ postsReceived: pipeline.latestPostsReceived, totalPosts: pipeline.postCountOffset + pipeline.latestPostsReceived, error });
     });
 }
 
@@ -746,6 +1108,126 @@ async function setState(tabId, patch) {
   return next;
 }
 
+async function getSubredditCycleConfig() {
+  const data = await chrome.storage.local.get({
+    [STORAGE_KEYS.subredditCycleConfig]: {
+      apiBase: DEFAULT_STATE.apiBase,
+      subreddits: ["daresgonewild"],
+    },
+  });
+
+  const config = data[STORAGE_KEYS.subredditCycleConfig] || {};
+  return {
+    apiBase: String(config.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, ""),
+    subreddits: parseSubredditList(config.subreddits || ["daresgonewild"]),
+  };
+}
+
+async function setSubredditCycleConfig(config) {
+  const next = {
+    apiBase: String(config.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, ""),
+    subreddits: parseSubredditList(config.subreddits),
+  };
+
+  await chrome.storage.local.set({ [STORAGE_KEYS.subredditCycleConfig]: next });
+  return next;
+}
+
+async function getSubredditCycleProgress() {
+  const data = await chrome.storage.local.get({ [STORAGE_KEYS.subredditCycleProgress]: {} });
+  return data[STORAGE_KEYS.subredditCycleProgress] || {};
+}
+
+async function setSubredditCycleProgress(progress) {
+  await chrome.storage.local.set({ [STORAGE_KEYS.subredditCycleProgress]: progress });
+  return progress;
+}
+
+async function getUrlScanHistory() {
+  const data = await chrome.storage.local.get({ [STORAGE_KEYS.urlScanHistory]: {} });
+  const history = data[STORAGE_KEYS.urlScanHistory] || {};
+  const now = Date.now();
+  let changed = false;
+
+  for (const [url, timestamp] of Object.entries(history)) {
+    if (typeof timestamp !== "number" || now - timestamp > HISTORY_RETENTION_MS) {
+      delete history[url];
+      changed = true;
+    }
+  }
+
+  if (changed) await chrome.storage.local.set({ [STORAGE_KEYS.urlScanHistory]: history });
+  return history;
+}
+
+async function getUrlCooldown(url) {
+  const history = await getUrlScanHistory();
+  const key = normaliseScanUrl(url);
+  const lastScannedAt = Number(history[key] || 0);
+  const ageMs = lastScannedAt ? Date.now() - lastScannedAt : Infinity;
+  const remainingMs = Math.max(0, SCAN_COOLDOWN_MS - ageMs);
+
+  return { lastScannedAt, ageMs, remainingMs };
+}
+
+async function markUrlScanned(url) {
+  const history = await getUrlScanHistory();
+  history[normaliseScanUrl(url)] = Date.now();
+  await chrome.storage.local.set({ [STORAGE_KEYS.urlScanHistory]: history });
+}
+
+function normaliseScanUrl(value) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase();
+    url.pathname = url.pathname.replace(/\/+$/, "/");
+
+    const params = [...url.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
+    url.search = "";
+    for (const [key, val] of params) url.searchParams.append(key, val);
+
+    return url.toString();
+  } catch {
+    return String(value).trim();
+  }
+}
+
+function isSameScanUrl(a, b) {
+  return stripUrlQuery(normaliseScanUrl(a)) === stripUrlQuery(normaliseScanUrl(b));
+}
+
+function parseSubredditList(value) {
+  const raw = Array.isArray(value) ? value.join("\n") : String(value || "");
+  const seen = new Set();
+  const subreddits = [];
+
+  for (const part of raw.split(/[\n,\s]+/g)) {
+    const subreddit = normaliseSubredditName(part);
+    if (!subreddit) continue;
+
+    const key = subreddit.toLowerCase();
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    subreddits.push(subreddit);
+  }
+
+  return subreddits;
+}
+
+function normaliseSubredditName(value) {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?reddit\.com\/r\//i, "")
+    .replace(/^\/r\//i, "")
+    .replace(/^r\//i, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/[^A-Za-z0-9_]/g, "");
+
+  return cleaned || "";
+}
+
 function isRedditUrl(value) {
   try {
     const url = new URL(value);
@@ -761,4 +1243,17 @@ function inferUsernameFromUrl(value) {
   } catch {
     return "";
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatDuration(ms) {
+  if (!Number.isFinite(ms)) return "never";
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
