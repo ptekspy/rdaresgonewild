@@ -1,10 +1,13 @@
-import { prisma } from "@rdgw/database";
+import { prisma, Prisma } from "@rdgw/database";
+import Link from "next/link";
+import { formatDateTime, formatNumber, statusClass } from "../admin-format";
+import { ScanUserProfileButton } from "./ScanUserProfileButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Users" };
 
 interface PageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; status?: string }>;
 }
 
 const PAGE_SIZE = 100;
@@ -14,69 +17,117 @@ type UserRow = {
   username: string;
   syncStatus: string;
   lastSyncedAt: Date | null;
+  postCount: number;
   _count: {
+    posts: number;
     playbookCompletions: number;
     communityCompletions: number;
   };
 };
 
 export default async function UsersPage({ searchParams }: PageProps) {
-  const { page: pageStr } = await searchParams;
+  const { page: pageStr, q: rawQuery, status: rawStatus } = await searchParams;
   const page = Math.max(1, parseInt(pageStr ?? "1", 10));
+  const query = rawQuery?.trim() ?? "";
+  const status = rawStatus?.trim() ?? "";
+
+  const where: Prisma.DgwUserWhereInput = {};
+  if (query) {
+    where.username = { contains: query, mode: "insensitive" };
+  }
+  if (status) {
+    where.syncStatus = status;
+  }
 
   const [users, total] = await Promise.all([
     prisma.dgwUser.findMany({
+      where,
       orderBy: { lastSyncedAt: { sort: "desc", nulls: "last" } },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       include: {
         _count: {
-          select: { playbookCompletions: true, communityCompletions: true },
+          select: { posts: true, playbookCompletions: true, communityCompletions: true },
         },
       },
     }),
-    prisma.dgwUser.count(),
+    prisma.dgwUser.count({ where }),
   ]);
 
   const typedUsers = users as UserRow[];
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const baseParams = new URLSearchParams();
+  if (query) baseParams.set("q", query);
+  if (status) baseParams.set("status", status);
+
+  function pageHref(nextPage: number) {
+    const params = new URLSearchParams(baseParams);
+    params.set("page", String(nextPage));
+    return `/users?${params.toString()}`;
+  }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Users ({total})</h1>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Users</h1>
+          <p className="mt-1 text-sm text-zinc-400">{formatNumber(total)} creators and crawled Reddit users.</p>
+        </div>
+        <Link href="/crawler" className="button-secondary">Sync user</Link>
+      </div>
+
+      <form className="admin-card grid gap-3 p-4 sm:grid-cols-[1fr_180px_auto]" action="/users">
+        <input className="field" name="q" defaultValue={query} placeholder="Search username" />
+        <select className="field" name="status" defaultValue={status}>
+          <option value="">Any sync status</option>
+          <option value="never">never</option>
+          <option value="syncing">syncing</option>
+          <option value="fresh">fresh</option>
+          <option value="stale">stale</option>
+        </select>
+        <button className="button-primary" type="submit">Filter</button>
+      </form>
+
+      <div className="admin-card overflow-x-auto">
+        <table className="admin-table">
           <thead>
-            <tr className="border-b border-zinc-800 text-zinc-500 text-left">
-              <th className="px-4 py-2">Username</th>
-              <th className="px-4 py-2">Sync status</th>
-              <th className="px-4 py-2">Last synced</th>
-              <th className="px-4 py-2">Playbook</th>
-              <th className="px-4 py-2">Community</th>
+            <tr>
+              <th>Username</th>
+              <th>Sync status</th>
+              <th>Posts</th>
+              <th>Playbook</th>
+              <th>Community</th>
+              <th>Last synced</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800/50">
+          <tbody>
             {typedUsers.map((u) => (
               <tr key={u.id}>
-                <td className="px-4 py-2">u/{u.username}</td>
-                <td className="px-4 py-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${
-                    u.syncStatus === "fresh" ? "bg-green-950 text-green-400" :
-                    u.syncStatus === "syncing" ? "bg-yellow-950 text-yellow-400" :
-                    u.syncStatus === "stale" ? "bg-orange-950 text-orange-400" :
-                    "bg-zinc-800 text-zinc-500"
-                  }`}>
-                    {u.syncStatus}
-                  </span>
+                <td>
+                  <a className="font-medium hover:text-white" href={`https://reddit.com/user/${u.username}`} target="_blank" rel="noreferrer">u/{u.username}</a>
                 </td>
-                <td className="px-4 py-2 text-zinc-500 text-xs">
-                  {u.lastSyncedAt ? u.lastSyncedAt.toISOString().slice(0, 16) : "never"}
-                </td>
-                <td className="px-4 py-2">{u._count.playbookCompletions}</td>
-                <td className="px-4 py-2">{u._count.communityCompletions}</td>
+                <td><span className={statusClass(u.syncStatus)}>{u.syncStatus}</span></td>
+                <td>{formatNumber(u._count.posts || u.postCount)}</td>
+                <td>{formatNumber(u._count.playbookCompletions)}</td>
+                <td>{formatNumber(u._count.communityCompletions)}</td>
+                <td className="text-xs text-zinc-500">{formatDateTime(u.lastSyncedAt)}</td>
+                <td><ScanUserProfileButton username={u.username} syncStatus={u.syncStatus} /></td>
               </tr>
             ))}
+            {typedUsers.length === 0 && (
+              <tr><td colSpan={7} className="py-8 text-center text-zinc-600">No users match this filter.</td></tr>
+            )}
           </tbody>
         </table>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-zinc-400">
+        <span>Page {page} of {totalPages}</span>
+        <div className="flex gap-2">
+          {page > 1 && <Link className="button-secondary" href={pageHref(page - 1)}>Previous</Link>}
+          {page < totalPages && <Link className="button-secondary" href={pageHref(page + 1)}>Next</Link>}
+        </div>
       </div>
     </div>
   );

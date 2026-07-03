@@ -21,6 +21,18 @@ export interface QueueHistoryBackfillOptions {
 }
 
 const JOB_LEASE_MS = 30 * 60 * 1000;
+const DEFAULT_CRAWLER_SUBREDDITS = [
+  "daresgonewild",
+  "FlashingAndFlaunting",
+  "RealPublicNudity",
+  "ExhibitionistGirl",
+  "ChanginginPublic",
+  "CMNF",
+  "onlyonenaked",
+  "outdoorgirls",
+  "Permanent_Nude",
+  "BralessForever",
+] as const;
 const DEFAULT_TOP_TIME_WINDOWS: SubredditTopTimeWindow[] = ["day", "week", "month", "year", "all"];
 const TOP_TIME_WINDOWS = new Set<SubredditTopTimeWindow>(DEFAULT_TOP_TIME_WINDOWS);
 const PROCESS_STARTED_AT = new Date();
@@ -58,12 +70,22 @@ export function getTopTimeWindowsEnv(name = "CRAWLER_TOP_TIME_WINDOWS") {
 }
 
 export function getSubredditsEnv() {
-  const configured = (process.env.CRAWLER_SUBREDDITS ?? process.env.REDDIT_SUBREDDIT ?? "daresgonewild")
+  const configured = (
+    process.env.CRAWLER_SUBREDDITS ??
+    process.env.REDDIT_SUBREDDIT ??
+    DEFAULT_CRAWLER_SUBREDDITS.join(",")
+  )
     .split(",")
     .map((value) => value.trim().replace(/^r\//i, ""))
     .filter(Boolean);
 
-  return [...new Set(configured.map((value) => value.toLowerCase()))];
+  const seen = new Set<string>();
+  return configured.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function getBotConfig() {

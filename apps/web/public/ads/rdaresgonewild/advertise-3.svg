@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="970" height="250" viewBox="0 0 970 250" role="img" aria-labelledby="title-rdaresgonewild-3 desc-rdaresgonewild-3">
+  <title id="title-rdaresgonewild-3">Contact us to advertise on r/DARES Gone Wild</title>
+  <desc id="desc-rdaresgonewild-3">Themed advertising house creative for rdaresgonewild.com.</desc>
+  <defs>
+    <linearGradient id="bg-rdaresgonewild-3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090b16"/>
+      <stop offset="0.48" stop-color="#f9047c" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#ff7a00" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="pulse-rdaresgonewild-3" cx="58%" cy="34%" r="60%">
+      <stop offset="0" stop-color="#ff7a00" stop-opacity="0.9"/>
+      <stop offset="0.42" stop-color="#f9047c" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#090b16" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-rdaresgonewild-3" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+  <rect width="970" height="250" rx="24" fill="url(#bg-rdaresgonewild-3)"/>
+  <rect x="1" y="1" width="968" height="248" rx="23" fill="none" stroke="#f9047c" stroke-opacity="0.36" stroke-width="2"/>
+  <circle cx="650" cy="132" r="148" fill="url(#pulse-rdaresgonewild-3)" filter="url(#soft-rdaresgonewild-3)"/>
+  <path d="M124 205 C220 132, 340 196, 490 108 S720 44, 895 130" fill="none" stroke="#ff7a00" stroke-opacity="0.46" stroke-width="5"/>
+  <path d="M690 36 h190 a22 22 0 0 1 22 22 v134 a22 22 0 0 1-22 22 H690 a22 22 0 0 1-22-22 V58 a22 22 0 0 1 22-22Z" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.16"/>
+  <g transform="translate(716 68)">
+    <circle cx="36" cy="36" r="34" fill="#f9047c" fill-opacity="0.2" stroke="#f9047c" stroke-opacity="0.75"/>
+    <circle cx="103" cy="36" r="34" fill="#ff7a00" fill-opacity="0.18" stroke="#ff7a00" stroke-opacity="0.75"/>
+    <circle cx="69" cy="88" r="34" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-opacity="0.4"/>
+  </g>
+  <text x="52" y="58" fill="#f9047c" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="1.2">DIRECT RESPONSE</text>
+  <text x="52" y="116" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="46" font-weight="900" letter-spacing="0">Contact us to advertise</text>
+  <text x="52" y="154" fill="#ffffff" fill-opacity="0.82" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="650">Simple placements for brands that fit the community</text>
+  <text x="52" y="205" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="900">r/DARES Gone Wild</text>
+  <text x="338" y="205" fill="#ff7a00" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="900">dare tracker</text>
+  <text x="728" y="205" fill="#ffffff" fill-opacity="0.92" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="900">Contact us</text>
+</svg>

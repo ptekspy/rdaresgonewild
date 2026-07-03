@@ -10,6 +10,23 @@ const DEFAULT_SITE_SUBREDDITS: Record<string, string[]> = {
   rdgw: ["daresgonewild"],
   rflashingandflaunting: ["FlashingAndFlaunting"],
   flashingandflaunting: ["FlashingAndFlaunting"],
+  rrealpublicnudity: ["RealPublicNudity"],
+  realpublicnudity: ["RealPublicNudity"],
+  rexhibitionistgirl: ["ExhibitionistGirl"],
+  exhibitionistgirl: ["ExhibitionistGirl"],
+  rchanginginpublic: ["ChanginginPublic"],
+  changinginpublic: ["ChanginginPublic"],
+  rcmnf: ["CMNF"],
+  cmnf: ["CMNF"],
+  ronlyonenaked: ["onlyonenaked"],
+  onlyonenaked: ["onlyonenaked"],
+  routdoorgirls: ["outdoorgirls"],
+  outdoorgirls: ["outdoorgirls"],
+  rpermanentnude: ["Permanent_Nude"],
+  permanentnude: ["Permanent_Nude"],
+  permanent_nude: ["Permanent_Nude"],
+  rbralessforever: ["BralessForever"],
+  bralessforever: ["BralessForever"],
 };
 
 export function OPTIONS() {

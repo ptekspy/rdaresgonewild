@@ -16,7 +16,7 @@ export function getTopWindowStart(window: TopWindow) {
 export function getBoardWhere(input: { tagSlug?: string; authorUsername?: string } = {}) {
   const site = getSiteConfig();
   const where: Prisma.DgwPostWhereInput = {
-    subreddit: site.subreddit,
+    subreddit: { equals: site.subreddit, mode: "insensitive" },
   };
 
   if (input.authorUsername) {
@@ -84,10 +84,10 @@ export async function getBoardStats() {
   const db = getDb();
   const site = getSiteConfig();
   const [postCount, creatorRows] = await Promise.all([
-    db.dgwPost.count({ where: { subreddit: site.subreddit } }),
+    db.dgwPost.count({ where: { subreddit: { equals: site.subreddit, mode: "insensitive" } } }),
     db.dgwPost.groupBy({
       by: ["authorUsername"],
-      where: { subreddit: site.subreddit },
+      where: { subreddit: { equals: site.subreddit, mode: "insensitive" } },
       _count: { id: true },
     }),
   ]);
@@ -101,7 +101,7 @@ export async function getTopBoardCreators(limit = 12) {
 
   return db.dgwPost.groupBy({
     by: ["authorUsername"],
-    where: { subreddit: site.subreddit },
+    where: { subreddit: { equals: site.subreddit, mode: "insensitive" } },
     _count: { id: true },
     _sum: { score: true },
     orderBy: [{ _count: { id: "desc" } }, { _sum: { score: "desc" } }],

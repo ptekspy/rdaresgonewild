@@ -181,53 +181,54 @@ export async function processPost(
     },
   });
 
+  return createCompletionsForPost(post, prisma, dgwPost.id, crawlRunId);
+}
+
+/**
+ * Run dare detection for a post that has already been persisted.
+ * This is used by both crawler ingestion and saved-post backfills.
+ */
+export async function createCompletionsForPost(
+  post: RedditPost,
+  prisma: typeof prismaClient,
+  postId: string,
+  crawlRunId?: string
+): Promise<number> {
   const detection = detectDareType(post);
   if (detection.type === "none") return 0;
 
   let created = 0;
 
   if (detection.type === "playbook" && detection.dareSlug) {
-    const completion = await prisma.playbookCompletion.upsert({
-      where: {
-        username_dareSlug: {
+    const result = await prisma.playbookCompletion.createMany({
+      data: [
+        {
           username: post.author,
           dareSlug: detection.dareSlug,
+          postId,
+          confidence: detection.confidence,
+          verified: null,
         },
-      },
-      update: {},
-      create: {
-        username: post.author,
-        dareSlug: detection.dareSlug,
-        postId: dgwPost.id,
-        confidence: detection.confidence,
-        verified: null,
-      },
+      ],
+      skipDuplicates: true,
     });
 
-    if (completion.detectedAt.getTime() >= Date.now() - 1_000) {
-      created++;
-    }
+    created += result.count;
   }
 
   if (detection.type === "community" && detection.darerUsername) {
-    const completion = await prisma.communityCompletion.upsert({
-      where: {
-        username_postId: {
+    const result = await prisma.communityCompletion.createMany({
+      data: [
+        {
           username: post.author,
-          postId: dgwPost.id,
+          darerUsername: detection.darerUsername,
+          postId,
         },
-      },
-      update: {},
-      create: {
-        username: post.author,
-        darerUsername: detection.darerUsername,
-        postId: dgwPost.id,
-      },
+      ],
+      skipDuplicates: true,
     });
 
-    if (completion.detectedAt.getTime() >= Date.now() - 1_000) {
-      created++;
-    }
+    created += result.count;
   }
 
   if (crawlRunId && created > 0) {

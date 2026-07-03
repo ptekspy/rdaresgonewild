@@ -30,6 +30,14 @@ Known site keys currently map as:
 ```text
 rdaresgonewild -> r/daresgonewild
 rflashingandflaunting -> r/FlashingAndFlaunting
+rrealpublicnudity -> r/RealPublicNudity
+rexhibitionistgirl -> r/ExhibitionistGirl
+rchanginginpublic -> r/ChanginginPublic
+rcmnf -> r/CMNF
+ronlyonenaked -> r/onlyonenaked
+routdoorgirls -> r/outdoorgirls
+rpermanentnude -> r/Permanent_Nude
+rbralessforever -> r/BralessForever
 ```
 
 You can override or extend those defaults with rows in `SiteSubreddit`.

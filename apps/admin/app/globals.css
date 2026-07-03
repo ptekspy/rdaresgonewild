@@ -1,2 +1,100 @@
 @import "tailwindcss";
-body { background: #0a0a0a; color: #e4e4e7; font-family: system-ui, sans-serif; }
+body { background: #09090b; color: #e4e4e7; font-family: system-ui, sans-serif; }
+
+input,
+select,
+textarea {
+  color-scheme: dark;
+}
+
+.admin-card {
+  border: 1px solid rgb(39 39 42);
+  background: rgb(24 24 27);
+  border-radius: 8px;
+}
+
+.admin-table {
+  width: 100%;
+  min-width: 760px;
+  font-size: 0.875rem;
+}
+
+.admin-table th {
+  padding: 0.625rem 1rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgb(161 161 170);
+  border-bottom: 1px solid rgb(39 39 42);
+}
+
+.admin-table td {
+  padding: 0.75rem 1rem;
+  vertical-align: top;
+}
+
+.admin-table tbody tr + tr {
+  border-top: 1px solid rgb(39 39 42 / 0.65);
+}
+
+.field {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid rgb(63 63 70);
+  background: rgb(39 39 42);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.field:focus {
+  border-color: rgb(113 113 122);
+}
+
+.button-primary,
+.button-secondary {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.button-primary {
+  background: rgb(244 244 245);
+  color: rgb(24 24 27);
+}
+
+.button-primary:hover {
+  background: white;
+}
+
+.button-secondary {
+  border: 1px solid rgb(63 63 70);
+  color: rgb(228 228 231);
+}
+
+.button-secondary:hover {
+  background: rgb(39 39 42);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+
+.badge-green { border-color: rgb(21 128 61); color: rgb(74 222 128); background: rgb(20 83 45 / 0.25); }
+.badge-yellow { border-color: rgb(161 98 7); color: rgb(250 204 21); background: rgb(113 63 18 / 0.25); }
+.badge-orange { border-color: rgb(194 65 12); color: rgb(251 146 60); background: rgb(124 45 18 / 0.25); }
+.badge-red { border-color: rgb(185 28 28); color: rgb(252 165 165); background: rgb(127 29 29 / 0.25); }
+.badge-zinc { border-color: rgb(82 82 91); color: rgb(161 161 170); background: rgb(39 39 42 / 0.4); }

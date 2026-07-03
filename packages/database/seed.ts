@@ -39,11 +39,59 @@ const SITES = [
     name: "r/FlashingAndFlaunting Board",
     domain: "rflashingandflaunting.com",
   },
+  {
+    key: "rrealpublicnudity",
+    name: "r/RealPublicNudity Board",
+    domain: "rrealpublicnudity.com",
+  },
+  {
+    key: "rexhibitionistgirl",
+    name: "r/ExhibitionistGirl Board",
+    domain: "rexhibitionistgirl.com",
+  },
+  {
+    key: "rchanginginpublic",
+    name: "r/ChanginginPublic Board",
+    domain: "rchanginginpublic.com",
+  },
+  {
+    key: "rcmnf",
+    name: "r/CMNF Board",
+    domain: "rcmnf.com",
+  },
+  {
+    key: "ronlyonenaked",
+    name: "r/onlyonenaked Board",
+    domain: "ronlyonenaked.com",
+  },
+  {
+    key: "routdoorgirls",
+    name: "r/outdoorgirls Board",
+    domain: "routdoorgirls.com",
+  },
+  {
+    key: "rpermanentnude",
+    name: "r/Permanent_Nude Board",
+    domain: "rpermanentnude.com",
+  },
+  {
+    key: "rbralessforever",
+    name: "r/BralessForever Board",
+    domain: "rbralessforever.com",
+  },
 ] as const;
 
 const SITE_SUBREDDITS = [
   { siteKey: "rdaresgonewild", subreddit: "daresgonewild" },
   { siteKey: "rflashingandflaunting", subreddit: "FlashingAndFlaunting" },
+  { siteKey: "rrealpublicnudity", subreddit: "RealPublicNudity" },
+  { siteKey: "rexhibitionistgirl", subreddit: "ExhibitionistGirl" },
+  { siteKey: "rchanginginpublic", subreddit: "ChanginginPublic" },
+  { siteKey: "rcmnf", subreddit: "CMNF" },
+  { siteKey: "ronlyonenaked", subreddit: "onlyonenaked" },
+  { siteKey: "routdoorgirls", subreddit: "outdoorgirls" },
+  { siteKey: "rpermanentnude", subreddit: "Permanent_Nude" },
+  { siteKey: "rbralessforever", subreddit: "BralessForever" },
 ] as const;
 
 async function upsertHouseAdvertiser() {

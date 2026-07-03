@@ -40,12 +40,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="site-header sticky top-0 z-40 border-b backdrop-blur-xl">
           <div className="rdgw-page-shell flex min-h-16 flex-col gap-3 py-3 md:flex-row md:items-center md:justify-between md:py-0">
             <Link href="/" className="group inline-flex items-center gap-3" aria-label={`${site.name} home`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={site.brand.logo}
-                alt={site.name}
-                className="site-logo h-11 w-auto transition-transform duration-200 group-hover:scale-[1.015]"
-              />
+              {site.brand.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={site.brand.logo}
+                  alt={site.name}
+                  className="site-logo h-11 w-auto transition-transform duration-200 group-hover:scale-[1.015]"
+                />
+              ) : (
+                <span className="site-wordmark transition-transform duration-200 group-hover:scale-[1.015]">
+                  <span className="site-wordmark-main">{site.brand.wordmark ?? site.name}</span>
+                  {site.brand.tagline && <span className="site-wordmark-tagline">{site.brand.tagline}</span>}
+                </span>
+              )}
             </Link>
 
             <nav className="flex flex-wrap items-center gap-2 text-sm">

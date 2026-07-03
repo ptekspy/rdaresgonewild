@@ -1,6 +1,8 @@
+import { createCompletionsForPost } from "@rdgw/crawler/detector";
+import type { RedditPost } from "@rdgw/crawler/reddit";
 import { Prisma, prisma } from "@rdgw/database";
 import { jsonError, jsonResponse, optionsResponse } from "@/lib/http";
-import { parsePostBatch } from "@/lib/reddit";
+import { parsePostBatch, type ExtensionRedditPost } from "@/lib/reddit";
 import { verifyUploadToken } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
       create: { username: post.author },
     });
 
-    await prisma.dgwPost.upsert({
+    const dgwPost = await prisma.dgwPost.upsert({
       where: { redditId: post.id },
       update: {
         subreddit: post.subreddit,
@@ -102,7 +104,12 @@ export async function POST(request: Request) {
         createdAtReddit,
         lastSeenAt: new Date(),
       },
+      select: { id: true },
     });
+
+    if (post.subreddit.toLowerCase() === "daresgonewild") {
+      await createCompletionsForPost(toRedditPost(post), prisma, dgwPost.id);
+    }
 
     accepted++;
   }
@@ -137,4 +144,28 @@ export async function POST(request: Request) {
   });
 
   return jsonResponse({ accepted, session: updatedSession });
+}
+
+function toRedditPost(post: ExtensionRedditPost): RedditPost {
+  return {
+    id: post.id,
+    name: post.name,
+    subreddit: post.subreddit,
+    title: post.title,
+    selftext: post.selftext ?? "",
+    author: post.author,
+    link_flair_text: post.link_flair_text ?? null,
+    score: post.score ?? 0,
+    upvoteCount: post.upvoteCount ?? null,
+    upvote_ratio: post.upvote_ratio ?? null,
+    num_comments: post.num_comments ?? 0,
+    shareCount: post.shareCount ?? null,
+    crosspostCount: post.crosspostCount ?? 0,
+    mediaUrls: post.mediaUrls ?? [],
+    imageUrls: post.imageUrls ?? [],
+    outboundUrl: post.outboundUrl ?? null,
+    thumbnailUrl: post.thumbnailUrl ?? null,
+    permalink: post.permalink,
+    created_utc: post.created_utc,
+  };
 }

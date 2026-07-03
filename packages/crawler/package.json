@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./detector": {
+      "types": "./dist/detector.d.ts",
+      "default": "./dist/detector.js"
+    },
+    "./reddit": {
+      "types": "./dist/reddit.d.ts",
+      "default": "./dist/reddit.js"
     }
   },
   "scripts": {
@@ -20,6 +28,7 @@
     "scan:user": "node dist/bin/scan-user.js",
     "scan:html": "node dist/bin/scan-html.js",
     "worker": "node dist/bin/worker.js",
+    "parse:saved": "node dist/bin/parse-saved-posts.js",
 
     "scan:browser": "node dist/bin/scan-browser.js",
     "backfill:browser": "node dist/bin/backfill-browser.js",
