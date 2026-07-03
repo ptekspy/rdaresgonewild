@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title desc">
+  <title id="title">Real Public Nudity social avatar</title>
+  <desc id="desc">Social image for the r/RealPublicNudity board.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#b8f05a"/><stop offset="0.48" stop-color="#f7c843"/><stop offset="1" stop-color="#f05a8a"/></linearGradient>
+    <radialGradient id="bg" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#22301a"/><stop offset="0.46" stop-color="#10130f"/><stop offset="1" stop-color="#080a07"/></radialGradient>
+    <pattern id="p" width="96" height="96" patternUnits="userSpaceOnUse"><path d="M12 72H84M24 48H84M36 24H84" stroke="#b8f05a" stroke-width="4" opacity="0.13" stroke-linecap="round"/></pattern>
+  </defs>
+  <rect width="1200" height="1200" rx="220" fill="url(#bg)"/>
+  <rect width="1200" height="1200" rx="220" fill="url(#p)" opacity="0.95"/>
+  <circle cx="600" cy="500" r="332" fill="#1b2119" stroke="url(#g)" stroke-width="30"/>
+  <path d="M438 647 L748 336" fill="none" stroke="url(#g)" stroke-width="62" stroke-linecap="round"/>
+  <path d="M378 590H790M420 500H830M462 410H870" fill="none" stroke="#dfff9b" stroke-width="42" stroke-linecap="round"/>
+  <text x="458" y="585" font-family="Inter, Arial, sans-serif" font-size="188" font-weight="950" fill="#f8fff1">r/</text>
+  <text x="600" y="925" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="78" font-weight="950" fill="#f8fff1">Real Public Nudity</text>
+  <text x="600" y="990" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="850" letter-spacing="5" fill="#dfff9b">FLAIR-RANKED PUBLICNESS</text>
+</svg>

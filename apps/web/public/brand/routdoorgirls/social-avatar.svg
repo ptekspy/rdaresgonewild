@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="r" cx="25%" cy="20%" r="80%">
+      <stop offset="0" stop-color="#233d25"/>
+      <stop offset="0.45" stop-color="#07120d"/>
+      <stop offset="1" stop-color="#050c09"/>
+    </radialGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9be57f"/>
+      <stop offset="0.5" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#5ac8fa"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#r)"/>
+  <circle cx="724" cy="252" r="92" fill="#ffd166" opacity="0.95"/>
+  <path d="M138 705 L420 292 L608 548 L720 424 L902 705 Z" fill="url(#g)"/>
+  <path d="M152 732 C290 584 492 562 814 732" fill="none" stroke="#5ac8fa" stroke-width="56" stroke-linecap="round" opacity="0.92"/>
+  <path d="M320 614 C246 446 311 286 518 190 C568 365 492 534 320 614 Z" fill="#9be57f" opacity="0.98"/>
+  <path d="M368 565 C428 448 474 326 506 224" fill="none" stroke="#07120d" stroke-width="31" stroke-linecap="round" opacity="0.68"/>
+  <text x="512" y="875" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="86" font-weight="950" fill="#f7fff4">Outdoor Girls</text>
+</svg>

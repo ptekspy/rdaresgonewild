@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" aria-hidden="true">
+  <rect width="240" height="240" fill="transparent"/>
+  <g fill="none" stroke="#30F4FF" stroke-opacity="0.18" stroke-width="2">
+    <path d="M20 40 H88 M20 80 H140 M20 120 H88 M20 160 H140 M20 200 H88"/>
+    <path d="M168 34 L179 78 L224 88 L184 111 L193 156 L168 118 L145 156 L153 111 L113 88 L158 78 Z" fill="#FF2D8F" fill-opacity="0.08" stroke="#FF2D8F" stroke-opacity="0.24"/>
+  </g>
+</svg>

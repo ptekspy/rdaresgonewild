@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 420" role="img" aria-label="Flashing And Flaunting logo">
+
+<defs>
+  <linearGradient id="rffNeon" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#30F4FF"/>
+    <stop offset="32%" stop-color="#78FFF1"/>
+    <stop offset="64%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#FFD15A"/>
+  </linearGradient>
+  <linearGradient id="rffPinkCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#30F4FF"/>
+  </linearGradient>
+  <radialGradient id="flashGlow" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#FFD15A" stop-opacity="0.9"/>
+    <stop offset="32%" stop-color="#FF2D8F" stop-opacity="0.45"/>
+    <stop offset="100%" stop-color="#30F4FF" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="9" result="blur"/>
+    <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.15 0 1 0 0 0.95 0 0 1 0 1 0 0 0 0.75 0"/>
+    <feMerge>
+      <feMergeNode/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+  <filter id="tightGlow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="3.5" result="blur"/>
+    <feMerge>
+      <feMergeNode in="blur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+</defs>
+
+  <g transform="translate(36 42)">
+    <circle cx="168" cy="168" r="144" fill="url(#flashGlow)" opacity="0.65"/>
+    <circle cx="168" cy="168" r="132" stroke="url(#rffNeon)" stroke-width="18"/>
+    <path d="M168 34 L188 121 L277 140 L198 184 L216 273 L168 198 L122 273 L138 184 L59 140 L149 121 Z"
+          fill="url(#rffNeon)" filter="url(#softGlow)"/>
+    <path d="M168 74 L181 130 L237 143 L187 172 L198 229 L168 181 L139 229 L149 172 L99 143 L155 130 Z"
+          fill="#07080B" opacity="0.84"/>
+    <text x="168" y="190" text-anchor="middle"
+      font-family="Inter, Arial Black, Arial, sans-serif" font-size="64" font-weight="950" letter-spacing="-5"
+      fill="#F7FBFF">F&amp;F</text>
+  </g>
+
+  <g transform="translate(360 104)">
+    <text x="0" y="80" font-family="Inter, Arial Black, Arial, sans-serif"
+      font-size="86" font-weight="950" letter-spacing="-3" fill="#F7FBFF">Flashing</text>
+    <text x="407" y="80" font-family="Inter, Arial Black, Arial, sans-serif"
+      font-size="86" font-weight="950" letter-spacing="-3" fill="url(#rffNeon)">And</text>
+    <text x="0" y="178" font-family="Inter, Arial Black, Arial, sans-serif"
+      font-size="86" font-weight="950" letter-spacing="-3" fill="#F7FBFF">Flaunting</text>
+    <text x="7" y="226" font-family="Inter, Arial, sans-serif"
+      font-size="28" font-weight="850" letter-spacing="7" fill="#30F4FF">PUBLIC OC BOARD</text>
+    <path d="M0 248 H640" stroke="url(#rffNeon)" stroke-width="8" stroke-linecap="round" opacity="0.95"/>
+  </g>
+</svg>

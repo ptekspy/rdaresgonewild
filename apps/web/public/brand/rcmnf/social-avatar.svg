@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CMNF Scenes mark">
+  <defs>
+    <linearGradient id="g" x1="88" y1="70" x2="424" y2="442" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2d6a3"/>
+      <stop offset="0.52" stop-color="#e94b5f"/>
+      <stop offset="1" stop-color="#39d0c8"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="28%" r="70%">
+      <stop offset="0" stop-color="#f2d6a3" stop-opacity="0.42"/>
+      <stop offset="0.45" stop-color="#e94b5f" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#0d0b0a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="124" fill="#0d0b0a"/>
+  <rect x="35" y="35" width="442" height="442" rx="102" fill="url(#halo)"/>
+  <path d="M98 124c0-23 19-42 42-42h232c23 0 42 19 42 42v264c0 23-19 42-42 42H140c-23 0-42-19-42-42V124z" fill="#14100e" stroke="url(#g)" stroke-width="18"/>
+  <path d="M256 92v328" stroke="url(#g)" stroke-width="10" stroke-linecap="round" opacity="0.72"/>
+  <path d="M131 159c34-25 75-37 125-37s91 12 125 37" fill="none" stroke="#f2d6a3" stroke-width="9" stroke-linecap="round" opacity="0.72"/>
+  <path d="M165 338c26 22 56 33 91 33s66-11 91-33" fill="none" stroke="#39d0c8" stroke-width="9" stroke-linecap="round" opacity="0.82"/>
+  <path d="M185 190c23 0 42 18 42 41v88h-84v-88c0-23 19-41 42-41z" fill="#f2d6a3" opacity="0.92"/>
+  <rect x="151" y="268" width="68" height="80" rx="20" fill="#f2d6a3" opacity="0.92"/>
+  <path d="M327 190c23 0 42 18 42 41v117h-84V231c0-23 19-41 42-41z" fill="#e94b5f" opacity="0.92"/>
+  <circle cx="185" cy="165" r="25" fill="#f2d6a3" opacity="0.95"/>
+  <circle cx="327" cy="165" r="25" fill="#e94b5f" opacity="0.95"/>
+  <path d="M118 395h276" stroke="#39d0c8" stroke-width="10" stroke-linecap="round" opacity="0.88"/>
+</svg>

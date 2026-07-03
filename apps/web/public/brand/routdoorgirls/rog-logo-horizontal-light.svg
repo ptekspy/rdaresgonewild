@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 240" role="img" aria-labelledby="title desc">
+  <title id="title">Outdoor Girls logo</title>
+  <desc id="desc">A scenic mountain, sun and leaf mark with Outdoor Girls wordmark.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9be57f"/>
+      <stop offset="0.48" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#5ac8fa"/>
+    </linearGradient>
+    <linearGradient id="m" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#07120d"/>
+      <stop offset="1" stop-color="#15261a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="24" y="28" width="184" height="184" rx="52" fill="url(#m)" stroke="rgba(155,229,127,0.42)" stroke-width="4"/>
+    <circle cx="162" cy="76" r="25" fill="#ffd166"/>
+    <path d="M52 167 L111 91 L154 143 L178 114 L207 167 Z" fill="url(#g)"/>
+    <path d="M69 172 C96 143 126 134 165 172" fill="none" stroke="#5ac8fa" stroke-width="11" stroke-linecap="round" opacity="0.9"/>
+    <path d="M91 151 C79 122 90 97 126 80 C135 111 124 136 91 151 Z" fill="#9be57f" opacity="0.95"/>
+    <path d="M100 141 C110 120 115 104 124 85" fill="none" stroke="#07120d" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+  </g>
+  <g transform="translate(245 55)">
+    <text x="0" y="68" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="74" font-weight="950" letter-spacing="-3" fill="#07120d">Outdoor</text>
+    <text x="0" y="139" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="78" font-weight="950" letter-spacing="-3" fill="url(#g)">Girls</text>
+    <text x="4" y="178" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="22" font-weight="800" letter-spacing="5" fill="#2d5b38">OPEN-AIR GALLERY</text>
+  </g>
+</svg>

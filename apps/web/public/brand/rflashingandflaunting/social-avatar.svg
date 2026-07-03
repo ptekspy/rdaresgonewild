@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Flashing And Flaunting social avatar">
+
+<defs>
+  <linearGradient id="rffNeon" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#30F4FF"/>
+    <stop offset="32%" stop-color="#78FFF1"/>
+    <stop offset="64%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#FFD15A"/>
+  </linearGradient>
+  <linearGradient id="rffPinkCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#30F4FF"/>
+  </linearGradient>
+  <radialGradient id="flashGlow" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#FFD15A" stop-opacity="0.9"/>
+    <stop offset="32%" stop-color="#FF2D8F" stop-opacity="0.45"/>
+    <stop offset="100%" stop-color="#30F4FF" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="9" result="blur"/>
+    <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.15 0 1 0 0 0.95 0 0 1 0 1 0 0 0 0.75 0"/>
+    <feMerge>
+      <feMergeNode/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+  <filter id="tightGlow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="3.5" result="blur"/>
+    <feMerge>
+      <feMergeNode in="blur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+</defs>
+
+  <rect width="1024" height="1024" rx="210" fill="#07080B"/>
+  <rect width="1024" height="1024" rx="210" fill="url(#flashGlow)" opacity="0.55"/>
+  <path d="M-40 230 C190 110 392 120 646 -30" stroke="#30F4FF" stroke-opacity="0.22" stroke-width="34" fill="none"/>
+  <path d="M350 1084 C562 782 804 754 1090 610" stroke="#FF2D8F" stroke-opacity="0.22" stroke-width="48" fill="none"/>
+  <circle cx="512" cy="496" r="330" fill="#11141B" opacity="0.82"/>
+  <circle cx="512" cy="496" r="300" stroke="url(#rffNeon)" stroke-width="28" fill="none"/>
+  <path d="M512 154 L561 377 L787 426 L589 538 L633 766 L512 574 L394 766 L438 538 L238 426 L465 377 Z"
+        fill="url(#rffNeon)" filter="url(#softGlow)"/>
+  <path d="M512 258 L539 396 L677 428 L557 497 L583 638 L512 520 L443 638 L468 497 L348 428 L487 396 Z"
+        fill="#07080B" opacity="0.84"/>
+  <text x="512" y="542" text-anchor="middle" font-family="Inter, Arial Black, Arial, sans-serif" font-size="154" font-weight="950" letter-spacing="-12" fill="#F7FBFF">F&amp;F</text>
+  <text x="512" y="774" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="900" letter-spacing="9" fill="#30F4FF">PUBLIC OC BOARD</text>
+</svg>

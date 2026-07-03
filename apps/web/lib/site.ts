@@ -99,8 +99,11 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     themeColor: "#07080b",
     backgroundColor: "#07080b",
     brand: {
-      logo: "/brand/rff/rff-logo-horizontal.svg",
-      ...sharedBoardBrand,
+      logo: "/brand/rflashingandflaunting/rff-logo-horizontal.svg",
+      mark: "/brand/rflashingandflaunting/rff-mark.svg",
+      favicon: "/brand/rflashingandflaunting/favicon.svg",
+      socialImage: "/brand/rflashingandflaunting/social-avatar.png",
+      tagline: "Public OC board",
     },
     nav: [
       { href: "/new", label: "New" },
@@ -139,7 +142,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "A structured public-nudity board organised by creator, flair, and publicness level.",
     themeColor: "#10130f",
     backgroundColor: "#10130f",
-    brand: { wordmark: "Real Public Nudity", tagline: "Flair-ranked publicness", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/rrealpublicnudity/rpn-logo-horizontal.svg",
+      mark: "/brand/rrealpublicnudity/rpn-mark.svg",
+      favicon: "/brand/rrealpublicnudity/favicon.svg",
+      socialImage: "/brand/rrealpublicnudity/social-avatar.png",
+      tagline: "Flair-ranked publicness",
+    },
     nav: [
       { href: "/tags/daring", label: "Daring" },
       { href: "/tags/people-nearby", label: "People Nearby" },
@@ -177,7 +186,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "Creator-first exhibitionist discovery from Reddit, organised by creator, flair, and public scenario.",
     themeColor: "#160914",
     backgroundColor: "#160914",
-    brand: { wordmark: "Exhibitionist Girl", tagline: "Creator discovery", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/rexhibitionistgirl/reg-logo-horizontal.svg",
+      mark: "/brand/rexhibitionistgirl/reg-mark.svg",
+      favicon: "/brand/rexhibitionistgirl/favicon.svg",
+      socialImage: "/brand/rexhibitionistgirl/social-avatar.png",
+      tagline: "Creator discovery",
+    },
     nav: [
       { href: "/creators", label: "Creators" },
       { href: "/tags/flashing", label: "Flashing" },
@@ -260,7 +275,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "CMNF Reddit posts organised by scene, creator, setting, and popularity.",
     themeColor: "#0d0b0a",
     backgroundColor: "#0d0b0a",
-    brand: { wordmark: "CMNF Scenes", tagline: "Scene dynamics", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/rcmnf/rcmnf-logo-horizontal.svg",
+      mark: "/brand/rcmnf/rcmnf-mark.svg",
+      favicon: "/brand/rcmnf/favicon.svg",
+      socialImage: "/brand/rcmnf/social-avatar.png",
+      tagline: "Scene dynamics",
+    },
     nav: [
       { href: "/tags/party", label: "Party" },
       { href: "/tags/couples", label: "Couples" },
@@ -340,7 +361,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "Outdoor NSFW Reddit posts organised by setting, creator, flair, and popularity.",
     themeColor: "#07120d",
     backgroundColor: "#07120d",
-    brand: { wordmark: "Outdoor Girls", tagline: "Open-air gallery", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/routdoorgirls/rog-logo-horizontal.svg",
+      mark: "/brand/routdoorgirls/rog-mark.svg",
+      favicon: "/brand/routdoorgirls/favicon.svg",
+      socialImage: "/brand/routdoorgirls/social-avatar.png",
+      tagline: "Open-air gallery",
+    },
     nav: [
       { href: "/tags/beach", label: "Beach" },
       { href: "/tags/woods", label: "Woods" },
@@ -379,7 +406,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "Permanent-nude stories, captions, and CMNF-style Reddit posts organised by scenario and creator.",
     themeColor: "#120c18",
     backgroundColor: "#120c18",
-    brand: { wordmark: "Permanent Nude", tagline: "Stories and scenarios", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/rpermanentnude/rperm-logo-horizontal.svg",
+      mark: "/brand/rpermanentnude/rperm-mark.svg",
+      favicon: "/brand/rpermanentnude/favicon.svg",
+      socialImage: "/brand/rpermanentnude/social-avatar.png",
+      tagline: "Stories and scenarios",
+    },
     nav: [
       { href: "/tags/story", label: "Stories" },
       { href: "/tags/caption", label: "Captions" },
@@ -417,7 +450,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "Braless creator and model posts from Reddit, organised by model/category and popularity.",
     themeColor: "#150b10",
     backgroundColor: "#150b10",
-    brand: { wordmark: "Braless Forever", tagline: "Model-led catalog", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/rbralessforever/rbf-logo-horizontal.svg",
+      mark: "/brand/rbralessforever/rbf-mark.svg",
+      favicon: "/brand/rbralessforever/favicon.svg",
+      socialImage: "/brand/rbralessforever/social-avatar.png",
+      tagline: "Model-led catalog",
+    },
     nav: [
       { href: "/creators", label: "Models" },
       { href: "/tags/branded", label: "Brand Posts" },
@@ -442,6 +481,7 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     },
   },
 };
+
 
 export const SITE_KEYS = Object.keys(SITE_CONFIGS);
 export const ALL_CRAWLED_SUBREDDITS = SITE_KEYS.map((key) => SITE_CONFIGS[key].subreddit);

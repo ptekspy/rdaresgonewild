@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Exhibitionist Girl social avatar">
+  <defs>
+    <radialGradient id="bg" cx="45%" cy="35%" r="72%">
+      <stop stop-color="#ff65b7" stop-opacity="0.32"/>
+      <stop offset="0.48" stop-color="#160914"/>
+      <stop offset="1" stop-color="#080407"/>
+    </radialGradient>
+    <linearGradient id="g" x1="128" y1="128" x2="896" y2="896" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff65b7"/>
+      <stop offset="0.5" stop-color="#ffc857"/>
+      <stop offset="1" stop-color="#8cf3ff"/>
+    </linearGradient>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="18" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect x="86" y="86" width="852" height="852" rx="206" fill="none" stroke="url(#g)" stroke-width="20"/>
+  <g transform="translate(142 143) scale(1.44)">
+    <path d="M117 338 C162 292 180 234 171 168 C217 191 247 225 256 270 C276 214 322 173 384 151 C363 216 364 278 399 337 C356 327 322 303 298 265 C293 314 276 349 247 374 C222 338 203 299 190 258 C174 298 151 324 117 338Z" fill="url(#g)" filter="url(#glow)" opacity="0.96"/>
+    <circle cx="256" cy="242" r="63" fill="#10070f" opacity="0.72"/>
+    <circle cx="256" cy="242" r="44" fill="none" stroke="#fff7fd" stroke-width="11"/>
+    <circle cx="256" cy="242" r="16" fill="#8cf3ff"/>
+  </g>
+  <text x="512" y="824" text-anchor="middle" font-family="Inter, Arial, Helvetica, sans-serif" font-weight="950" font-size="92" fill="#fff7fd">EG</text>
+  <text x="512" y="881" text-anchor="middle" font-family="Inter, Arial, Helvetica, sans-serif" font-weight="800" font-size="28" letter-spacing="7" fill="#ffc4e5">CREATOR DISCOVERY</text>
+</svg>

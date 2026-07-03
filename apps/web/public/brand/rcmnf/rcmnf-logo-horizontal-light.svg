@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 360" role="img" aria-label="CMNF Scenes logo">
+  <defs>
+    <linearGradient id="g" x1="30" y1="20" x2="560" y2="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2d6a3"/>
+      <stop offset="0.5" stop-color="#e94b5f"/>
+      <stop offset="1" stop-color="#39d0c8"/>
+    </linearGradient>
+    <linearGradient id="text" x1="360" y1="90" x2="1200" y2="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2d6a3"/>
+      <stop offset="0.48" stop-color="#e94b5f"/>
+      <stop offset="1" stop-color="#39d0c8"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-40%" width="140%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="1400" height="360" rx="58" fill="none"/>
+  <g transform="translate(55 45) scale(.53)">
+    
+  
+  </g>
+  <g filter="url(#glow)">
+    <text x="355" y="158" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="118" font-weight="950" letter-spacing="-3" fill="url(#text)">CMNF</text>
+    <text x="360" y="248" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="78" font-weight="850" letter-spacing="-1" fill="#fff7e6">Scenes</text>
+    <text x="690" y="246" font-family="Inter, ui-sans-serif, system-ui, Arial, sans-serif" font-size="27" font-weight="800" letter-spacing="8" fill="#39d0c8" opacity=".9">SCENE DYNAMICS</text>
+  </g>
+</svg>

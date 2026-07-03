@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Braless Forever social image</title>
+  <desc id="desc">Social avatar for Braless Forever with rose and gold abstract mark.</desc>
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="25%" r="90%">
+      <stop offset="0" stop-color="#3A1828"/>
+      <stop offset=".45" stop-color="#150B10"/>
+      <stop offset="1" stop-color="#070406"/>
+    </radialGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF9CB3"/>
+      <stop offset=".5" stop-color="#FFE45E"/>
+      <stop offset="1" stop-color="#7AF6C5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="190" fill="url(#bg)"/>
+  <path d="M0 248C190 190 332 212 512 282C704 356 826 328 1024 256V0H0Z" fill="#FF9CB3" opacity=".1"/>
+  <path d="M0 824C188 746 350 746 518 804C704 868 850 850 1024 762V1024H0Z" fill="#FFE45E" opacity=".08"/>
+  <g transform="translate(230 154)">
+    <circle cx="282" cy="282" r="250" fill="#FFFFFF" opacity=".045" stroke="#FF9CB3" stroke-opacity=".22" stroke-width="3"/>
+    <path d="M110 282C164 112 410 102 492 242C562 360 508 538 282 650C56 538 56 354 110 282Z" fill="url(#line)"/>
+    <path d="M174 272C232 192 358 190 415 270C468 344 415 456 282 530C149 456 126 344 174 272Z" fill="#150B10" opacity=".42"/>
+    <path d="M185 250C256 318 398 318 469 250" fill="none" stroke="#FFF2D4" stroke-width="44" stroke-linecap="round"/>
+    <path d="M230 408C280 442 346 442 396 408" fill="none" stroke="#FFE45E" stroke-width="24" stroke-linecap="round"/>
+  </g>
+  <text x="512" y="860" text-anchor="middle"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="70" font-weight="950" letter-spacing="-2" fill="#FFF2D4">Braless</text>
+  <text x="512" y="926" text-anchor="middle"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="64" font-weight="950" letter-spacing="-2" fill="#FF9CB3">Forever</text>
+</svg>

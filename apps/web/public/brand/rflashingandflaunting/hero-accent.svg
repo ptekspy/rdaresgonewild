@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
+
+<defs>
+  <linearGradient id="rffNeon" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#30F4FF"/>
+    <stop offset="32%" stop-color="#78FFF1"/>
+    <stop offset="64%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#FFD15A"/>
+  </linearGradient>
+  <linearGradient id="rffPinkCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#30F4FF"/>
+  </linearGradient>
+  <radialGradient id="flashGlow" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#FFD15A" stop-opacity="0.9"/>
+    <stop offset="32%" stop-color="#FF2D8F" stop-opacity="0.45"/>
+    <stop offset="100%" stop-color="#30F4FF" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="9" result="blur"/>
+    <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.15 0 1 0 0 0.95 0 0 1 0 1 0 0 0 0.75 0"/>
+    <feMerge>
+      <feMergeNode/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+  <filter id="tightGlow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="3.5" result="blur"/>
+    <feMerge>
+      <feMergeNode in="blur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+</defs>
+
+  <rect width="1600" height="900" fill="transparent"/>
+  <circle cx="1210" cy="175" r="410" fill="#30F4FF" opacity="0.16"/>
+  <circle cx="320" cy="620" r="360" fill="#FF2D8F" opacity="0.15"/>
+  <circle cx="1100" cy="690" r="270" fill="#FFD15A" opacity="0.10"/>
+  <path d="M0 210 C230 140 330 70 520 145 C735 230 825 110 1002 70 C1225 20 1390 82 1600 0"
+        stroke="url(#rffNeon)" stroke-width="6" fill="none" opacity="0.6"/>
+  <path d="M0 820 C295 650 480 820 710 670 C955 510 1180 650 1600 420"
+        stroke="url(#rffPinkCyan)" stroke-width="8" fill="none" opacity="0.45"/>
+  <g opacity="0.27">
+    <path d="M1240 98 L1272 218 L1395 247 L1286 307 L1311 430 L1240 324 L1172 430 L1197 307 L1088 247 L1210 218 Z" fill="url(#rffNeon)"/>
+    <path d="M260 420 L282 504 L367 524 L292 566 L309 652 L260 578 L213 652 L230 566 L155 524 L240 504 Z" fill="url(#rffNeon)"/>
+  </g>
+</svg>

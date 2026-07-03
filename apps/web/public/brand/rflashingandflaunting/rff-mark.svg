@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Flashing and Flaunting mark">
+
+<defs>
+  <linearGradient id="rffNeon" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#30F4FF"/>
+    <stop offset="32%" stop-color="#78FFF1"/>
+    <stop offset="64%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#FFD15A"/>
+  </linearGradient>
+  <linearGradient id="rffPinkCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#FF2D8F"/>
+    <stop offset="100%" stop-color="#30F4FF"/>
+  </linearGradient>
+  <radialGradient id="flashGlow" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#FFD15A" stop-opacity="0.9"/>
+    <stop offset="32%" stop-color="#FF2D8F" stop-opacity="0.45"/>
+    <stop offset="100%" stop-color="#30F4FF" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="9" result="blur"/>
+    <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.15 0 1 0 0 0.95 0 0 1 0 1 0 0 0 0.75 0"/>
+    <feMerge>
+      <feMergeNode/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+  <filter id="tightGlow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="3.5" result="blur"/>
+    <feMerge>
+      <feMergeNode in="blur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+</defs>
+
+  <g fill="none">
+    <circle cx="256" cy="256" r="202" fill="url(#flashGlow)" opacity="0.65"/>
+    <circle cx="256" cy="256" r="182" stroke="url(#rffNeon)" stroke-width="22" opacity="0.95"/>
+    <circle cx="256" cy="256" r="140" stroke="#F7FBFF" stroke-opacity="0.12" stroke-width="2"/>
+    <path d="M255 76 L283 199 L407 228 L296 289 L319 414 L255 305 L193 414 L216 289 L105 228 L229 199 Z"
+      fill="url(#rffNeon)" filter="url(#softGlow)"/>
+    <path d="M256 116 L275 209 L366 231 L287 276 L303 365 L256 287 L210 365 L225 276 L146 231 L237 209 Z"
+      fill="#07080B" opacity="0.82"/>
+    <path d="M171 229 C204 171 309 171 342 229" stroke="#FFD15A" stroke-width="18" stroke-linecap="round" opacity="0.95"/>
+    <path d="M159 290 C199 346 313 346 353 290" stroke="#30F4FF" stroke-width="18" stroke-linecap="round" opacity="0.95"/>
+    <text x="256" y="279" text-anchor="middle"
+      font-family="Inter, Arial Black, Arial, sans-serif" font-size="88" font-weight="950" letter-spacing="-6"
+      fill="#F7FBFF">F&amp;F</text>
+  </g>
+</svg>
