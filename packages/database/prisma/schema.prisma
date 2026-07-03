@@ -13,6 +13,8 @@ datasource db {
 
 model DgwPost {
   id              String   @id @default(cuid())
+  /// Source subreddit, without the r/ prefix.
+  subreddit       String   @default("daresgonewild")
   /// Reddit post ID (t3_xxxxx without prefix)
   redditId        String   @unique
   authorUsername  String
@@ -39,6 +41,9 @@ model DgwPost {
   communityCompletions CommunityCompletion[]
 
   @@index([authorUsername])
+  @@index([subreddit])
+  @@index([subreddit, createdAtReddit])
+  @@index([subreddit, score])
   @@index([flair])
   @@index([createdAtReddit])
 }
@@ -131,10 +136,13 @@ model CrawlRun {
 model CrawlCursor {
   id         String   @id @default(cuid())
   /// "subreddit_new" | "subreddit_hot"
-  type       String   @unique
+  type       String
+  target     String   @default("daresgonewild")
   lastCursor String?
   lastRunAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@unique([type, target])
 }
 
 model BrowserCrawlJob {

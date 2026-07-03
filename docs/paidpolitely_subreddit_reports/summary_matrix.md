@@ -1,0 +1,13 @@
+# Candidate Summary Matrix
+
+| Subreddit | Fit score | Assessment |
+|---|---:|---|
+| r/FlashingAndFlaunting | 9.5 | Closest drop-in. Public flashing OC community, strict publicness and approved-host rules. |
+| r/RealPublicNudity | 9.0 | Large structured public-nudity subreddit with strong flair taxonomy and verification rules. |
+| r/ExhibitionistGirl | 8.8 | Creator-first exhibitionism subreddit with controlled self-promo and clear flairs. |
+| r/ChanginginPublic | 8.5 | Smaller, newer, high-concept public-changing/crossnetwork challenge subreddit. |
+| r/CMNF | 8.0 | Long-running CMNF scene-dynamic subreddit with crosspost rules and controlled self-promo. |
+| r/onlyonenaked | 7.8 | Simple one-nude-among-clothed niche with strong crosspost-network overlap. |
+| r/outdoorgirls | 7.0 | Outdoor/nature/beach NSFW gallery, verification required, softer than challenge subs. |
+| r/Permanent_Nude | 6.8 | Unique story/caption/fictional permanent-nude subreddit; requires bespoke editorial UI. |
+| r/BralessForever | 6.0 | Brand-controlled official subreddit/funnel; useful competitor/ad prospect but weakest standalone clone. |

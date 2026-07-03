@@ -5,6 +5,9 @@ import Link from "next/link";
 import { PLAYBOOK_BY_SLUG, PLAYBOOK_DARES, LEVEL_LABELS } from "@rdgw/playbook";
 import { AdSlot } from "@/components/AdSlot";
 import { ProfilePersonalization } from "@/components/ProfilePersonalization";
+import { RedditPostCard } from "@/components/RedditPostCard";
+import { getBoardPosts } from "@/lib/board";
+import { getSiteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 const NOT_REJECTED = { OR: [{ verified: true }, { verified: null }] };
@@ -37,6 +40,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function UserProfilePage({ params }: PageProps) {
   const { username } = await params;
+  const site = getSiteConfig();
+  if (site.mode === "reddit-board") {
+    return <BoardCreatorProfile username={username} />;
+  }
+
   const db = getDb();
 
   const user = await db.dgwUser.findUnique({ where: { username } });
@@ -46,12 +54,12 @@ export default async function UserProfilePage({ params }: PageProps) {
     CommunityCompletionSummary[],
   ] = await Promise.all([
     db.playbookCompletion.findMany({
-      where: { username, ...NOT_REJECTED },
+      where: { username, ...NOT_REJECTED, post: { subreddit: site.subreddit } },
       orderBy: { detectedAt: "desc" },
       select: { dareSlug: true, detectedAt: true, post: { select: { permalink: true } } },
     }),
     db.communityCompletion.findMany({
-      where: { username, ...NOT_REJECTED },
+      where: { username, ...NOT_REJECTED, post: { subreddit: site.subreddit } },
       orderBy: { detectedAt: "desc" },
       select: { id: true, darerUsername: true, detectedAt: true, post: { select: { permalink: true } } },
     }),
@@ -106,7 +114,7 @@ export default async function UserProfilePage({ params }: PageProps) {
 
       {!user && (
         <div className="rdgw-card px-4 py-8 text-center text-sm text-zinc-500">
-          This user hasn't been synced yet. Visit{" "}
+          This user hasn&apos;t been synced yet. Visit{" "}
           <Link href="/dare-picker" className="rdgw-link font-bold">Dare Picker</Link>{" "}
           and enter their username to sync their history.
         </div>
@@ -114,7 +122,7 @@ export default async function UserProfilePage({ params }: PageProps) {
 
       {completedCount === 0 && user && (
         <div className="rdgw-card px-4 py-8 text-center text-sm text-zinc-500">
-          No playbook completions detected yet. Posts must have "Dared by" flair on r/daresgonewild.
+          No playbook completions detected yet. Posts must have &quot;Dared by&quot; flair on r/daresgonewild.
         </div>
       )}
 
@@ -187,6 +195,56 @@ export default async function UserProfilePage({ params }: PageProps) {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+async function BoardCreatorProfile({ username }: { username: string }) {
+  const site = getSiteConfig();
+  const posts = await getBoardPosts({ authorUsername: username, sort: "new", limit: 24 });
+  const totalScore = posts.reduce((sum, post) => sum + post.score, 0);
+  const totalComments = posts.reduce((sum, post) => sum + post.commentCount, 0);
+
+  return (
+    <div className="rdgw-page-shell max-w-6xl py-10 space-y-8">
+      <section className="rdgw-card-strong rdgw-glow-border overflow-hidden p-6 sm:p-8">
+        <Link href="/creators" className="rdgw-link text-sm font-bold">
+          Back to creators
+        </Link>
+        <div className="mt-5 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <span className="rdgw-kicker">Creator profile</span>
+            <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">u/{username}</h1>
+            <p className="mt-3 text-sm text-zinc-300">{site.subredditDisplay}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
+              <p className="text-2xl font-black text-white">{posts.length}</p>
+              <p className="text-xs uppercase tracking-wider text-zinc-500">posts</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
+              <p className="text-2xl font-black text-white">{totalScore}</p>
+              <p className="text-xs uppercase tracking-wider text-zinc-500">score</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
+              <p className="text-2xl font-black text-white">{totalComments}</p>
+              <p className="text-xs uppercase tracking-wider text-zinc-500">comments</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <AdSlot slotKey="profile_sidebar" />
+
+      <section className="space-y-5">
+        <h2 className="text-2xl font-black text-white">Indexed posts</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {posts.map((post) => (
+            <RedditPostCard key={post.id} post={post} />
+          ))}
+        </div>
+        {posts.length === 0 && <p className="rdgw-card px-4 py-12 text-center text-sm text-zinc-500">No posts indexed for this creator yet.</p>}
+      </section>
     </div>
   );
 }

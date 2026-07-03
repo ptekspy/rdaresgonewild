@@ -125,7 +125,7 @@ async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
 
   if (job.type === "subreddit_new_hourly" || job.type === "subreddit_sort_daily") {
     for (const author of result.authors) {
-      await queueUserJob(author);
+      await queueUserJob(author, new Date(), getBotConfig().subreddit);
     }
   }
 
@@ -174,7 +174,7 @@ async function runSubredditJob(
       }
 
       const knownRedditIds = stopAtKnown
-        ? await fetchKnownRedditIds(page.posts.map((post) => post.id))
+        ? await fetchKnownRedditIds(config.subreddit, page.posts.map((post) => post.id))
         : new Set<string>();
 
       for (const post of page.posts) {
@@ -210,9 +210,9 @@ async function runSubredditJob(
 
     if (job.type === "subreddit_new_hourly" && firstSeenCursor) {
       await prisma.crawlCursor.upsert({
-        where: { type: "subreddit_new" },
+        where: { type_target: { type: "subreddit_new", target: config.subreddit } },
         update: { lastCursor: firstSeenCursor, lastRunAt: new Date() },
-        create: { type: "subreddit_new", lastCursor: firstSeenCursor },
+        create: { type: "subreddit_new", target: config.subreddit, lastCursor: firstSeenCursor },
       });
     }
 
@@ -248,14 +248,15 @@ async function runSubredditJob(
 
 async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob): Promise<JobRunResult> {
   const config = getBotConfig();
+  const username = parseUserJobTarget(job.target, config.subreddit);
   const crawlRun = await prisma.crawlRun.create({
-    data: { type: "browser_user_full_scroll", target: job.target },
+    data: { type: "browser_user_full_scroll", target: `${config.subreddit}:${username}` },
   });
 
   await prisma.dgwUser.upsert({
-    where: { username: job.target },
+    where: { username },
     update: { syncStatus: "syncing" },
-    create: { username: job.target, syncStatus: "syncing" },
+    create: { username, syncStatus: "syncing" },
   });
 
   const renderedPostsSeen = config.htmlDiagnostics
@@ -271,7 +272,7 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
 
   try {
     while (pagesScanned < config.maxPages) {
-      const page = await fetchUserSubmittedPage(browser, config.subreddit, job.target, after);
+      const page = await fetchUserSubmittedPage(browser, config.subreddit, username, after);
       pagesScanned++;
       rawPostsSeen += page.rawCount;
 
@@ -286,7 +287,7 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
       });
 
       console.log(
-        `[crawler-bot] page ${pagesScanned}/${config.maxPages} user_full_scroll:${job.target}; ` +
+        `[crawler-bot] page ${pagesScanned}/${config.maxPages} user_full_scroll:${config.subreddit}:${username}; ` +
           `raw=${page.rawCount}; matches=${page.posts.length}; processed=${postsProcessed}; ` +
           `next=${page.after ?? "none"}`,
       );
@@ -300,7 +301,7 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
     }
 
     await prisma.dgwUser.update({
-      where: { username: job.target },
+      where: { username },
       data: { syncStatus: "fresh", lastSyncedAt: new Date() },
     });
 
@@ -327,7 +328,7 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
     };
   } catch (error) {
     await prisma.dgwUser.update({
-      where: { username: job.target },
+      where: { username },
       data: { syncStatus: "stale" },
     });
 
@@ -337,6 +338,11 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
     });
     throw error;
   }
+}
+
+function parseUserJobTarget(target: string, subreddit: string) {
+  const prefix = `${subreddit}:`;
+  return target.startsWith(prefix) ? target.slice(prefix.length) : target;
 }
 
 function isForceFullScan(value: unknown) {
@@ -414,11 +420,11 @@ function isTargetSubredditPost(post: RedditPost, subreddit: string) {
   return post.permalink.toLowerCase().includes(`/r/${subreddit.toLowerCase()}/`);
 }
 
-async function fetchKnownRedditIds(redditIds: string[]) {
+async function fetchKnownRedditIds(subreddit: string, redditIds: string[]) {
   if (redditIds.length === 0) return new Set<string>();
 
   const rows = await prisma.dgwPost.findMany({
-    where: { redditId: { in: redditIds } },
+    where: { subreddit, redditId: { in: redditIds } },
     select: { redditId: true },
   });
 

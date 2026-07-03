@@ -45,7 +45,7 @@ export default function CrawlerPage() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-3">
         <h2 className="font-semibold">User Sync</h2>
         <p className="text-zinc-400 text-sm">
-          Sync a specific user's post history (without the u/ prefix).
+          Sync a specific user&apos;s post history (without the u/ prefix).
         </p>
         <div className="flex gap-2">
           <input

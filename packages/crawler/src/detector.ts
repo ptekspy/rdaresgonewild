@@ -143,6 +143,7 @@ export async function processPost(
   const dgwPost = await prisma.dgwPost.upsert({
     where: { redditId: post.id },
     update: {
+      subreddit: post.subreddit,
       score: post.score,
       upvoteCount: post.upvoteCount,
       upvoteRatio: post.upvote_ratio,
@@ -159,6 +160,7 @@ export async function processPost(
       permalink: post.permalink,
     },
     create: {
+      subreddit: post.subreddit,
       redditId: post.id,
       authorUsername: post.author,
       title: post.title,

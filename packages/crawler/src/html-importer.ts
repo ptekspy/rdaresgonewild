@@ -53,6 +53,7 @@ const POST_BLOCK_PATTERN = /<shreddit-post(?=[\s>])([^>]*)>([\s\S]*?)<\/shreddit
 const FLAIR_BLOCK_PATTERN =
   /<shreddit-post-flair(?=[\s>])([^>]*)>([\s\S]*?)<\/shreddit-post-flair>/g;
 const DEFAULT_IMPORT_BATCH_SIZE = 100;
+const DEFAULT_SUBREDDIT = "daresgonewild";
 
 export function parseDaresGoneWildHtml(html: string): RedditPost[] {
   const flairsByPostId = parseFlairs(html);
@@ -465,6 +466,7 @@ function postFromAttributes(
   return {
     id: name.slice(3),
     name,
+    subreddit: inferSubredditFromPermalink(absolutePermalink) ?? DEFAULT_SUBREDDIT,
     title,
     selftext: extractSelftext(innerHtml),
     author,
@@ -582,6 +584,11 @@ function parseFloatNumber(value?: string) {
 
 function absolutizeRedditUrl(value: string) {
   return value.startsWith("http") ? value : `https://www.reddit.com${value}`;
+}
+
+function inferSubredditFromPermalink(permalink: string) {
+  const match = permalink.match(/\/r\/([^/]+)\//i);
+  return match?.[1] ?? null;
 }
 
 function extractHtmlOutboundUrl(value: string | undefined, permalink: string) {

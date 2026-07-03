@@ -3,6 +3,7 @@ import { RateLimiter } from "./rate-limiter.js";
 export interface RedditPost {
   id: string;          // without t3_ prefix
   name: string;        // full name e.g. t3_abc123
+  subreddit: string;
   title: string;
   selftext: string;
   author: string;
@@ -275,6 +276,7 @@ export function normalisePost(raw: RawRedditPost): RedditPost | null {
   return {
     id: raw.id,
     name: raw.name,
+    subreddit: raw.subreddit ?? inferSubredditFromPermalink(permalink) ?? DEFAULT_SUBREDDIT,
     title: raw.title,
     selftext: raw.selftext ?? "",
     author: raw.author,
@@ -292,6 +294,11 @@ export function normalisePost(raw: RawRedditPost): RedditPost | null {
     permalink,
     created_utc: raw.created_utc,
   };
+}
+
+function inferSubredditFromPermalink(permalink: string) {
+  const match = permalink.match(/\/r\/([^/]+)\//i);
+  return match?.[1] ?? null;
 }
 
 function normalisePermalink(permalink: string) {

@@ -28,6 +28,19 @@ const RDGW_PLACEMENTS = [
   { key: "footer_sponsor", label: "Footer sponsor", width: 970, height: 90 },
 ] as const;
 
+const SITES = [
+  {
+    key: "rdaresgonewild",
+    name: "r/daresgonewild Tracker",
+    domain: "rdaresgonewild.com",
+  },
+  {
+    key: "rflashingandflaunting",
+    name: "r/FlashingAndFlaunting Board",
+    domain: "rflashingandflaunting.com",
+  },
+] as const;
+
 async function upsertHouseAdvertiser() {
   const existing = await prisma.advertiser.findFirst({
     where: { name: "Paid Politely" },
@@ -120,84 +133,92 @@ async function upsertHouseCreative(campaignId: string) {
 }
 
 async function main() {
-  const site = await prisma.site.upsert({
-    where: { key: "rdaresgonewild" },
-    update: {
-      name: "r/daresgonewild Tracker",
-      domain: "rdaresgonewild.com",
-      status: SiteStatus.ACTIVE,
-    },
-    create: {
-      key: "rdaresgonewild",
-      name: "r/daresgonewild Tracker",
-      domain: "rdaresgonewild.com",
-      status: SiteStatus.ACTIVE,
-    },
-  });
-
-  const placements = await Promise.all(
-    RDGW_PLACEMENTS.map((placement) =>
-      prisma.placement.upsert({
-        where: { siteId_key: { siteId: site.id, key: placement.key } },
+  const seededSites = await Promise.all(
+    SITES.map((siteConfig) =>
+      prisma.site.upsert({
+        where: { key: siteConfig.key },
         update: {
-          label: placement.label,
-          width: placement.width,
-          height: placement.height,
-          enabled: true,
+          name: siteConfig.name,
+          domain: siteConfig.domain,
+          status: SiteStatus.ACTIVE,
         },
         create: {
-          siteId: site.id,
-          key: placement.key,
-          label: placement.label,
-          width: placement.width,
-          height: placement.height,
-          enabled: true,
+          key: siteConfig.key,
+          name: siteConfig.name,
+          domain: siteConfig.domain,
+          status: SiteStatus.ACTIVE,
         },
       }),
     ),
   );
 
-  const homepageTop = placements.find((placement) => placement.key === "homepage_top");
-  if (!homepageTop) {
-    throw new Error("Seed placement homepage_top was not created");
-  }
+  const allPlacements = await Promise.all(
+    seededSites.flatMap((site) =>
+      RDGW_PLACEMENTS.map((placement) =>
+        prisma.placement.upsert({
+          where: { siteId_key: { siteId: site.id, key: placement.key } },
+          update: {
+            label: placement.label,
+            width: placement.width,
+            height: placement.height,
+            enabled: true,
+          },
+          create: {
+            siteId: site.id,
+            key: placement.key,
+            label: placement.label,
+            width: placement.width,
+            height: placement.height,
+            enabled: true,
+          },
+        }),
+      ),
+    ),
+  );
 
   const advertiser = await upsertHouseAdvertiser();
   const campaign = await upsertHouseCampaign(advertiser.id);
   const creative = await upsertHouseCreative(campaign.id);
 
-  const existingBooking = await prisma.booking.findFirst({
-    where: {
-      campaignId: campaign.id,
-      creativeId: creative.id,
-      placementId: homepageTop.id,
-    },
-  });
+  const homepagePlacements = allPlacements.filter((placement) => placement.key === "homepage_top");
+  if (homepagePlacements.length !== seededSites.length) {
+    throw new Error("Seed placement homepage_top was not created for every site");
+  }
 
-  if (existingBooking) {
-    await prisma.booking.update({
-      where: { id: existingBooking.id },
-      data: {
-        enabled: true,
-        weight: 100,
-        priority: 100,
-      },
-    });
-  } else {
-    await prisma.booking.create({
-      data: {
+  for (const homepageTop of homepagePlacements) {
+    const existingBooking = await prisma.booking.findFirst({
+      where: {
         campaignId: campaign.id,
         creativeId: creative.id,
         placementId: homepageTop.id,
-        enabled: true,
-        weight: 100,
-        priority: 100,
       },
     });
+
+    if (existingBooking) {
+      await prisma.booking.update({
+        where: { id: existingBooking.id },
+        data: {
+          enabled: true,
+          weight: 100,
+          priority: 100,
+        },
+      });
+    } else {
+      await prisma.booking.create({
+        data: {
+          campaignId: campaign.id,
+          creativeId: creative.id,
+          placementId: homepageTop.id,
+          enabled: true,
+          weight: 100,
+          priority: 100,
+        },
+      });
+    }
   }
 
   console.log(
-    `Seeded Paid Politely Ads: ${site.key}, ${placements.length} placements, house ad on homepage_top.`,
+    `Seeded Paid Politely Ads: ${seededSites.length} sites, ${allPlacements.length} placements, house ads on homepage_top.`,
   );
 }
 

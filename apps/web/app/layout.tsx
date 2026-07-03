@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PlayAsControl } from "@/components/PlayAsControl";
+import { getSiteConfig } from "@/lib/site";
 import "./globals.css";
 
-const siteName = "r/DARES Gone Wild";
-const siteDescription = "Track your r/daresgonewild playbook progress, climb the leaderboard, and get your next dare.";
+const site = getSiteConfig();
 
 export const metadata: Metadata = {
-  title: { default: `${siteName} — Dare Leaderboard & Picker`, template: `%s | ${siteName}` },
-  description: siteDescription,
-  metadataBase: new URL("https://rdaresgonewild.com"),
+  title: { default: site.name, template: `%s | ${site.name}` },
+  description: site.description,
+  metadataBase: new URL(`https://${site.domain}`),
   icons: {
     icon: [
       { url: "/brand/favicon.ico" },
@@ -19,23 +19,20 @@ export const metadata: Metadata = {
     apple: "/brand/apple-touch-icon.png",
   },
   openGraph: {
-    title: siteName,
-    description: siteDescription,
-    siteName,
-    images: [{ url: "/brand/social-avatar-1024x1024.png", width: 1024, height: 1024, alt: siteName }],
+    title: site.name,
+    description: site.description,
+    siteName: site.name,
+    images: [{ url: "/brand/social-avatar-1024x1024.png", width: 1024, height: 1024, alt: site.name }],
   },
 };
 
-const navLinks = [
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/dares", label: "Playbook" },
-];
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const site = getSiteConfig();
+
   return (
     <html lang="en">
       <head>
-        <meta name="apple-mobile-web-app-title" content="r/DARES" />
+        <meta name="apple-mobile-web-app-title" content={site.shortName} />
       </head>
       <body className="min-h-screen flex flex-col antialiased">
         <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
@@ -46,17 +43,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <header className="sticky top-0 z-40 border-b border-white/10 bg-[#090b16]/[0.82] backdrop-blur-xl">
           <div className="rdgw-page-shell flex min-h-16 flex-col gap-3 py-3 md:flex-row md:items-center md:justify-between md:py-0">
-            <Link href="/" className="group inline-flex items-center gap-3" aria-label="r/DARES Gone Wild home">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/brand/rdgw-logo-horizontal-color-white.png"
-                alt="r/DARES Gone Wild"
-                className="h-11 w-auto transition-transform duration-200 group-hover:scale-[1.015]"
-              />
+            <Link href="/" className="group inline-flex items-center gap-3" aria-label={`${site.name} home`}>
+              {site.mode === "dare-tracker" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src="/brand/rdgw-logo-horizontal-color-white.png"
+                  alt={site.name}
+                  className="h-11 w-auto transition-transform duration-200 group-hover:scale-[1.015]"
+                />
+              ) : (
+                <span className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-lg font-black text-white transition group-hover:border-pink-500/40">
+                  {site.name}
+                </span>
+              )}
             </Link>
 
             <nav className="flex flex-wrap items-center gap-2 text-sm">
-              {navLinks.map((link) => (
+              {site.nav.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -65,10 +68,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   {link.label}
                 </Link>
               ))}
-              <Link href="/dare-picker" className="rdgw-button-primary px-4 py-2 text-sm">
-                Pick a Dare
-              </Link>
-              <PlayAsControl />
+              {site.mode === "dare-tracker" ? (
+                <>
+                  <Link href="/dare-picker" className="rdgw-button-primary px-4 py-2 text-sm">
+                    Pick a Dare
+                  </Link>
+                  <PlayAsControl />
+                </>
+              ) : (
+                <a
+                  href={`https://reddit.com/${site.subredditDisplay}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rdgw-button-primary px-4 py-2 text-sm"
+                >
+                  Reddit
+                </a>
+              )}
             </nav>
           </div>
         </header>
@@ -85,14 +101,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               className="mx-auto h-12 w-auto opacity-90"
             />
             <p>
-              r/DARES Gone Wild — Unofficial fan site. All dare content from{" "}
+              {site.name} - Unofficial fan site. Content indexed from{" "}
               <a
-                href="https://reddit.com/r/daresgonewild"
+                href={`https://reddit.com/${site.subredditDisplay}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="rdgw-link"
               >
-                r/daresgonewild
+                {site.subredditDisplay}
               </a>.
             </p>
           </div>

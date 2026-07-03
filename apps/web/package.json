@@ -9,7 +9,7 @@
     "preview": "opennextjs-cloudflare build && wrangler dev",
     "deploy": "opennextjs-cloudflare build && wrangler deploy",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

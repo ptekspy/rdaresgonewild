@@ -44,8 +44,8 @@ export async function scanSubreddit(client: RedditListingClient): Promise<void> 
       if (posts.length === 0) break;
 
       for (const post of posts) {
-        const existing = await prisma.dgwPost.findUnique({
-          where: { redditId: post.id },
+        const existing = await prisma.dgwPost.findFirst({
+          where: { subreddit: target, redditId: post.id },
           select: { id: true },
         });
 
@@ -69,9 +69,9 @@ export async function scanSubreddit(client: RedditListingClient): Promise<void> 
 
     if (firstSeenCursor) {
       await prisma.crawlCursor.upsert({
-        where: { type: "subreddit_new" },
+        where: { type_target: { type: "subreddit_new", target } },
         update: { lastCursor: firstSeenCursor, lastRunAt: new Date() },
-        create: { type: "subreddit_new", lastCursor: firstSeenCursor },
+        create: { type: "subreddit_new", target, lastCursor: firstSeenCursor },
       });
     }
 
@@ -151,9 +151,9 @@ export async function backfillSubredditNew(client: RedditListingClient): Promise
 
     if (firstSeenCursor) {
       await prisma.crawlCursor.upsert({
-        where: { type: "subreddit_new" },
+        where: { type_target: { type: "subreddit_new", target } },
         update: { lastCursor: firstSeenCursor, lastRunAt: new Date() },
-        create: { type: "subreddit_new", lastCursor: firstSeenCursor },
+        create: { type: "subreddit_new", target, lastCursor: firstSeenCursor },
       });
     }
 

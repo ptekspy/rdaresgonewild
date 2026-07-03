@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PLAYBOOK_DARES } from "@rdgw/playbook";
 import { AdSlot } from "@/components/AdSlot";
 import { LeaderboardPersonalization } from "@/components/LeaderboardPersonalization";
+import { getSiteConfig } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Leaderboard" };
 export const dynamic = "force-dynamic";
@@ -19,9 +20,10 @@ const NOT_REJECTED = { OR: [{ verified: true }, { verified: null }] };
 
 async function getPlaybookLeaderboard(page: number) {
   const db = getDb();
+  const site = getSiteConfig();
   const rows = await db.playbookCompletion.groupBy({
     by: ["username"],
-    where: NOT_REJECTED,
+    where: { ...NOT_REJECTED, post: { subreddit: site.subreddit } },
     _count: { dareSlug: true },
     orderBy: { _count: { dareSlug: "desc" } },
     skip: (page - 1) * PAGE_SIZE,
@@ -29,7 +31,7 @@ async function getPlaybookLeaderboard(page: number) {
   });
   const total = await db.playbookCompletion.groupBy({
     by: ["username"],
-    where: NOT_REJECTED,
+    where: { ...NOT_REJECTED, post: { subreddit: site.subreddit } },
     _count: { dareSlug: true },
   });
   return { rows, totalUsers: total.length };
@@ -37,9 +39,10 @@ async function getPlaybookLeaderboard(page: number) {
 
 async function getCommunityLeaderboard(page: number) {
   const db = getDb();
+  const site = getSiteConfig();
   const rows = await db.communityCompletion.groupBy({
     by: ["username"],
-    where: NOT_REJECTED,
+    where: { ...NOT_REJECTED, post: { subreddit: site.subreddit } },
     _count: { id: true },
     orderBy: { _count: { id: "desc" } },
     skip: (page - 1) * PAGE_SIZE,
@@ -47,7 +50,7 @@ async function getCommunityLeaderboard(page: number) {
   });
   const total = await db.communityCompletion.groupBy({
     by: ["username"],
-    where: NOT_REJECTED,
+    where: { ...NOT_REJECTED, post: { subreddit: site.subreddit } },
     _count: { id: true },
   });
   return { rows, totalUsers: total.length };
@@ -55,11 +58,18 @@ async function getCommunityLeaderboard(page: number) {
 
 async function getOverallLeaderboard(page: number) {
   const db = getDb();
+  const site = getSiteConfig();
   const rows: Array<{ username: string; total: bigint }> = await db.$queryRaw`
     SELECT username, COUNT(*) as total FROM (
-      SELECT username FROM "PlaybookCompletion" WHERE verified IS NOT FALSE
+      SELECT pc.username
+      FROM "PlaybookCompletion" pc
+      JOIN "DgwPost" p ON p.id = pc."postId"
+      WHERE pc.verified IS NOT FALSE AND p.subreddit = ${site.subreddit}
       UNION ALL
-      SELECT username FROM "CommunityCompletion" WHERE verified IS NOT FALSE
+      SELECT cc.username
+      FROM "CommunityCompletion" cc
+      JOIN "DgwPost" p ON p.id = cc."postId"
+      WHERE cc.verified IS NOT FALSE AND p.subreddit = ${site.subreddit}
     ) combined
     GROUP BY username
     ORDER BY total DESC
@@ -67,9 +77,15 @@ async function getOverallLeaderboard(page: number) {
   `;
   const countResult: Array<{ count: bigint }> = await db.$queryRaw`
     SELECT COUNT(DISTINCT username) as count FROM (
-      SELECT username FROM "PlaybookCompletion" WHERE verified IS NOT FALSE
+      SELECT pc.username
+      FROM "PlaybookCompletion" pc
+      JOIN "DgwPost" p ON p.id = pc."postId"
+      WHERE pc.verified IS NOT FALSE AND p.subreddit = ${site.subreddit}
       UNION ALL
-      SELECT username FROM "CommunityCompletion" WHERE verified IS NOT FALSE
+      SELECT cc.username
+      FROM "CommunityCompletion" cc
+      JOIN "DgwPost" p ON p.id = cc."postId"
+      WHERE cc.verified IS NOT FALSE AND p.subreddit = ${site.subreddit}
     ) combined
   `;
   return {

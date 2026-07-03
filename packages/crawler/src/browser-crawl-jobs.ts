@@ -110,6 +110,7 @@ export async function ensureDueJobs() {
 
   const users = await prisma.dgwUser.findMany({
     where: {
+      posts: { some: { subreddit: config.subreddit } },
       OR: [
         { lastSyncedAt: null },
         { lastSyncedAt: { lt: cutoff } },
@@ -122,7 +123,7 @@ export async function ensureDueJobs() {
   });
 
   for (const user of users) {
-    await queueUserJob(user.username, now);
+    await queueUserJob(user.username, now, config.subreddit);
   }
 }
 
@@ -196,13 +197,18 @@ async function hasDueSubredditJob() {
   return Boolean(job);
 }
 
-export async function queueUserJob(username: string, scheduledFor = new Date()) {
+export async function queueUserJob(
+  username: string,
+  scheduledFor = new Date(),
+  subreddit = getBotConfig().subreddit,
+) {
   const safeUsername = username.replace(/^u\//i, "").trim();
   if (!safeUsername || safeUsername === "[deleted]") return;
+  const target = `${subreddit}:${safeUsername}`;
 
   await upsertJob({
     type: "user_full_scroll",
-    target: safeUsername,
+    target,
     url: `https://www.reddit.com/user/${encodeURIComponent(safeUsername)}/submitted/`,
     priority: 40,
     scheduledFor,
