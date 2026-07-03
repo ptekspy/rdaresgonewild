@@ -43,6 +43,7 @@ export async function runSavedPostParse(): Promise<{ success: boolean; message: 
     const result = await parseSavedPosts({
       subreddit: "daresgonewild",
       limit: parseInt(process.env.ADMIN_PARSE_POST_LIMIT ?? "500", 10),
+      onlyWithoutCompletions: false,
     });
 
     revalidatePath("/crawler");
@@ -52,7 +53,11 @@ export async function runSavedPostParse(): Promise<{ success: boolean; message: 
 
     return {
       success: true,
-      message: `Parsed ${result.postsChecked} saved DGW posts; created ${result.completionsCreated} completions`,
+      message:
+        `Parsed ${result.postsChecked} saved DGW posts; found ${result.completionsFound} dares ` +
+        `(${result.playbookCompletionsFound} playbook, ${result.communityCompletionsFound} community); ` +
+        `created ${result.completionsCreated} new ` +
+        `(${result.playbookCompletionsCreated} playbook, ${result.communityCompletionsCreated} community)`,
     };
   } catch (e) {
     return { success: false, message: String(e) };

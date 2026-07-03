@@ -5,8 +5,8 @@ import { sha256, verifyAdToken } from "@/lib/ads/tokens";
 
 export const dynamic = "force-dynamic";
 
-export function OPTIONS(request: NextRequest) {
-  return optionsResponse(request);
+export function OPTIONS() {
+  return optionsResponse();
 }
 
 export async function POST(request: NextRequest) {

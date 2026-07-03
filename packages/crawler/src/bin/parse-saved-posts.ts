@@ -16,7 +16,10 @@ async function main() {
 
   const result = await parseSavedPosts({ subreddit, source, limit });
   console.log(
-    `[parser] checked ${result.postsChecked} saved posts; created ${result.completionsCreated} completions`
+    `[parser] checked ${result.postsChecked} saved posts; found ${result.completionsFound} dares ` +
+      `(${result.playbookCompletionsFound} playbook, ${result.communityCompletionsFound} community); ` +
+      `created ${result.completionsCreated} new ` +
+      `(${result.playbookCompletionsCreated} playbook, ${result.communityCompletionsCreated} community)`
   );
 }
 

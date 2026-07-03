@@ -4,6 +4,8 @@ import type { prisma as prismaClient } from "@rdgw/database";
 
 const DARED_BY_PATTERN = /dared\s*by/i;
 const PLAYBOOK_PATTERN = /playbook/i;
+const COMMUNITY_DARE_PATTERN =
+  /\b(?:dared\s+(?:by|me|him|her|us|them|to)|(?:hubby|husband|wife|boyfriend|girlfriend|partner)\s+dared\s+(?:me|us|him|her|them)|thank\s+you\s*,?\s*u\/[A-Za-z0-9_-]{3,20})\b/i;
 const DARER_PATTERN = /\bu\/([A-Za-z0-9_-]{3,20})\b/gi;
 const USERNAME_PATTERN = "[A-Za-z0-9_-]{3,20}";
 const QUOTED_USERNAME_PATTERN = `["'“”‘’]?(${USERNAME_PATTERN})["'“”‘’]?`;
@@ -43,19 +45,25 @@ export interface DetectionResult {
   confidence: number;
 }
 
+export interface CompletionCreationResult {
+  detected: number;
+  playbookDetected: number;
+  communityDetected: number;
+  created: number;
+  playbookCreated: number;
+  communityCreated: number;
+}
+
 export function detectDareType(post: RedditPost): DetectionResult {
   const flair = post.link_flair_text ?? "";
   const isDaredBy = DARED_BY_PATTERN.test(flair);
   const isPlaybook = PLAYBOOK_PATTERN.test(flair);
 
-  if (!isDaredBy && !isPlaybook) {
-    return { type: "none", confidence: 0 };
-  }
-
   const fullText = `${post.title} ${post.selftext}`;
+  const hasCommunityDareText = COMMUNITY_DARE_PATTERN.test(fullText);
 
   const matched = matchPlaybookDare(fullText);
-  if (matched) {
+  if (matched && (isPlaybook || PLAYBOOK_PATTERN.test(fullText))) {
     return {
       type: "playbook",
       dareSlug: matched.slug,
@@ -64,6 +72,10 @@ export function detectDareType(post: RedditPost): DetectionResult {
   }
 
   if (isPlaybook) {
+    return { type: "none", confidence: 0 };
+  }
+
+  if (!isDaredBy && !hasCommunityDareText) {
     return { type: "none", confidence: 0 };
   }
 
@@ -77,7 +89,11 @@ export function detectDareType(post: RedditPost): DetectionResult {
     };
   }
 
-  return { type: "none", confidence: 0 };
+  return {
+    type: "community",
+    darerUsername: "unknown",
+    confidence: isDaredBy ? 0.65 : 0.5,
+  };
 }
 
 function extractDarerUsernames(text: string, author: string) {
@@ -194,13 +210,33 @@ export async function createCompletionsForPost(
   postId: string,
   crawlRunId?: string
 ): Promise<number> {
-  const detection = detectDareType(post);
-  if (detection.type === "none") return 0;
+  const result = await createCompletionResultForPost(post, prisma, postId, crawlRunId);
+  return result.created;
+}
 
-  let created = 0;
+/**
+ * Run dare detection for a persisted post and return both detected and new counts.
+ */
+export async function createCompletionResultForPost(
+  post: RedditPost,
+  prisma: typeof prismaClient,
+  postId: string,
+  crawlRunId?: string
+): Promise<CompletionCreationResult> {
+  const detection = detectDareType(post);
+  const result: CompletionCreationResult = {
+    detected: detection.type === "none" ? 0 : 1,
+    playbookDetected: detection.type === "playbook" ? 1 : 0,
+    communityDetected: detection.type === "community" ? 1 : 0,
+    created: 0,
+    playbookCreated: 0,
+    communityCreated: 0,
+  };
+
+  if (detection.type === "none") return result;
 
   if (detection.type === "playbook" && detection.dareSlug) {
-    const result = await prisma.playbookCompletion.createMany({
+    const created = await prisma.playbookCompletion.createMany({
       data: [
         {
           username: post.author,
@@ -213,11 +249,12 @@ export async function createCompletionsForPost(
       skipDuplicates: true,
     });
 
-    created += result.count;
+    result.playbookCreated += created.count;
+    result.created += created.count;
   }
 
   if (detection.type === "community" && detection.darerUsername) {
-    const result = await prisma.communityCompletion.createMany({
+    const created = await prisma.communityCompletion.createMany({
       data: [
         {
           username: post.author,
@@ -228,15 +265,16 @@ export async function createCompletionsForPost(
       skipDuplicates: true,
     });
 
-    created += result.count;
+    result.communityCreated += created.count;
+    result.created += created.count;
   }
 
-  if (crawlRunId && created > 0) {
+  if (crawlRunId && result.created > 0) {
     await prisma.crawlRun.update({
       where: { id: crawlRunId },
-      data: { completionsDetected: { increment: created } },
+      data: { completionsDetected: { increment: result.created } },
     });
   }
 
-  return created;
+  return result;
 }

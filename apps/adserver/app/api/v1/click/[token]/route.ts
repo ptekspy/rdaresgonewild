@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
-  const origin = request.headers.get("origin");
 
   let payload;
   try {
@@ -16,7 +15,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
   } catch {
     return NextResponse.json(
       { ok: false, error: { code: "BAD_REQUEST", message: "Invalid click token" } },
-      { status: 400, headers: securityHeaders(origin) },
+      { status: 400, headers: securityHeaders() },
     );
   }
 
@@ -28,7 +27,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
   if (!creative || payload.targetUrlHash !== sha256(creative.targetUrl)) {
     return NextResponse.json(
       { ok: false, error: { code: "BAD_REQUEST", message: "Invalid click target" } },
-      { status: 400, headers: securityHeaders(origin) },
+      { status: 400, headers: securityHeaders() },
     );
   }
 
@@ -38,7 +37,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
   } catch {
     return NextResponse.json(
       { ok: false, error: { code: "BAD_REQUEST", message: "Unsupported click target" } },
-      { status: 400, headers: securityHeaders(origin) },
+      { status: 400, headers: securityHeaders() },
     );
   }
 
@@ -53,7 +52,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
     },
   });
 
-  const headers = securityHeaders(origin);
+  const headers = securityHeaders();
   headers.set("Location", targetUrl.toString());
 
   return new NextResponse(null, {

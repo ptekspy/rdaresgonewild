@@ -1,5 +1,5 @@
 import { Prisma, prisma } from "@rdgw/database";
-import { createCompletionsForPost } from "./detector.js";
+import { createCompletionResultForPost } from "./detector.js";
 import type { RedditPost } from "./reddit.js";
 
 const DEFAULT_LIMIT = 250;
@@ -36,7 +36,12 @@ export interface ParseSavedPostsOptions {
 
 export interface ParseSavedPostsResult {
   postsChecked: number;
+  completionsFound: number;
+  playbookCompletionsFound: number;
+  communityCompletionsFound: number;
   completionsCreated: number;
+  playbookCompletionsCreated: number;
+  communityCompletionsCreated: number;
 }
 
 export async function parseSavedPosts(
@@ -87,15 +92,31 @@ export async function parseSavedPosts(
     },
   });
 
+  let completionsFound = 0;
+  let playbookCompletionsFound = 0;
+  let communityCompletionsFound = 0;
   let completionsCreated = 0;
+  let playbookCompletionsCreated = 0;
+  let communityCompletionsCreated = 0;
 
   for (const post of posts) {
-    completionsCreated += await createCompletionsForPost(toRedditPost(post), prisma, post.id);
+    const result = await createCompletionResultForPost(toRedditPost(post), prisma, post.id);
+    completionsFound += result.detected;
+    playbookCompletionsFound += result.playbookDetected;
+    communityCompletionsFound += result.communityDetected;
+    completionsCreated += result.created;
+    playbookCompletionsCreated += result.playbookCreated;
+    communityCompletionsCreated += result.communityCreated;
   }
 
   return {
     postsChecked: posts.length,
+    completionsFound,
+    playbookCompletionsFound,
+    communityCompletionsFound,
     completionsCreated,
+    playbookCompletionsCreated,
+    communityCompletionsCreated,
   };
 }
 

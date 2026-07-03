@@ -13,8 +13,8 @@ function errorResponse(code: ErrorCode, message: string, origin: string | null, 
   return jsonResponse({ ok: false, error: { code, message } }, { status, origin });
 }
 
-export function OPTIONS(request: NextRequest) {
-  return optionsResponse(request);
+export function OPTIONS() {
+  return optionsResponse();
 }
 
 export async function GET(request: NextRequest) {
