@@ -119,6 +119,46 @@ select {
   max-width: 5rem;
 }
 
+.paidpolitely-network-footer {
+  border-color: var(--border);
+  background:
+    linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.18)),
+    var(--brand-gradient-soft);
+}
+
+.paidpolitely-network-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.85rem;
+}
+
+.paidpolitely-network-card {
+  display: block;
+  min-height: 11rem;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.025)),
+    var(--surface);
+  padding: 1rem;
+  text-decoration: none;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.paidpolitely-network-card:hover {
+  border-color: var(--button-secondary-hover-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.035)),
+    var(--surface-strong);
+  box-shadow: var(--button-shadow-hover);
+  transform: translateY(-2px);
+}
+
 .site-ambient {
   position: absolute;
   height: 32rem;
@@ -757,4 +797,92 @@ select {
 .site-rchanginginpublic .rdgw-button-primary,
 .site-rchanginginpublic .rdgw-pill-active {
   color: #07101c;
+}
+
+
+/* r/onlyonenaked brand polish -------------------------------------------------
+   Append this to apps/web/app/globals.css after the existing site theme blocks. */
+
+.site-ronlyonenaked {
+  --bg: #090b0e;
+  --surface: #15191e;
+  --surface-strong: #1b2026;
+  --border: rgba(232, 238, 245, 0.16);
+  --muted: #aab6c5;
+  --text: #f8fafc;
+  --accent: #f1f5f9;
+  --accent-hover: #ff4f8b;
+  --accent-orange: #37d67a;
+  --accent-muted: rgba(241, 245, 249, 0.13);
+  --brand-gradient: linear-gradient(135deg, #f8fafc 0%, #37d67a 48%, #ff4f8b 100%);
+  --brand-gradient-soft: linear-gradient(135deg, rgba(248, 250, 252, 0.16), rgba(55, 214, 122, 0.14), rgba(255, 79, 139, 0.16));
+  --body-background:
+    radial-gradient(circle at top left, rgba(248, 250, 252, 0.12), transparent 31rem),
+    radial-gradient(circle at 74% 18%, rgba(55, 214, 122, 0.12), transparent 27rem),
+    radial-gradient(circle at bottom right, rgba(255, 79, 139, 0.16), transparent 34rem),
+    linear-gradient(180deg, #07090c 0%, #0e1114 50%, #151316 100%);
+  --selection-bg: rgba(255, 79, 139, 0.35);
+  --header-bg: rgba(9, 11, 14, 0.88);
+  --header-border: rgba(232, 238, 245, 0.16);
+  --ambient-one-bg: linear-gradient(120deg, rgba(248, 250, 252, 0.18), rgba(55, 214, 122, 0));
+  --ambient-two-bg: linear-gradient(120deg, rgba(255, 79, 139, 0.18), rgba(248, 250, 252, 0));
+  --ambient-line-bg: linear-gradient(90deg, transparent, rgba(248, 250, 252, 0.55), rgba(255, 79, 139, 0.5), transparent);
+  --card-strong-bg:
+    radial-gradient(circle at 32% 20%, rgba(248, 250, 252, 0.12), transparent 22rem),
+    radial-gradient(circle at 78% 82%, rgba(255, 79, 139, 0.14), transparent 20rem),
+    linear-gradient(90deg, rgba(248, 250, 252, 0.08) 0 50%, rgba(55, 214, 122, 0.055) 50% 100%),
+    linear-gradient(180deg, rgba(27, 32, 38, 0.98), rgba(14, 17, 20, 0.98));
+  --glow-border-bg: linear-gradient(135deg, rgba(248, 250, 252, 0.62), rgba(55, 214, 122, 0.44), rgba(255, 79, 139, 0.58));
+  --button-shadow: 0 14px 36px rgba(248, 250, 252, 0.13), 0 8px 28px rgba(255, 79, 139, 0.18);
+  --button-shadow-hover: 0 18px 42px rgba(55, 214, 122, 0.20), 0 12px 32px rgba(255, 79, 139, 0.24);
+  --button-secondary-hover-border: rgba(248, 250, 252, 0.5);
+  --button-secondary-hover-bg: rgba(248, 250, 252, 0.08);
+  --kicker-border: rgba(248, 250, 252, 0.3);
+  --kicker-bg: rgba(248, 250, 252, 0.08);
+  --kicker-color: #f8fafc;
+  --link: #f1f5f9;
+  --link-hover: #37d67a;
+  --hero-accent-one-bg: linear-gradient(135deg, rgba(248, 250, 252, 0.18), rgba(55, 214, 122, 0));
+  --hero-accent-two-bg: linear-gradient(135deg, rgba(255, 79, 139, 0.18), rgba(248, 250, 252, 0));
+}
+
+.site-ronlyonenaked .site-logo {
+  height: clamp(2.75rem, 6vw, 3.45rem);
+  max-width: min(82vw, 25rem);
+}
+
+.site-ronlyonenaked .rdgw-card,
+.site-ronlyonenaked .rdgw-card-strong {
+  box-shadow: 0 24px 82px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(248, 250, 252, 0.07);
+}
+
+.site-ronlyonenaked .board-home-contrast .rdgw-card-strong {
+  position: relative;
+  overflow: hidden;
+}
+
+.site-ronlyonenaked .board-home-contrast .rdgw-card-strong::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("/brand/ronlyonenaked/hero-accent.svg") center / cover no-repeat,
+    url("/brand/ronlyonenaked/pattern.svg") right top / 260px 260px repeat;
+  opacity: 0.4;
+  mix-blend-mode: screen;
+}
+
+.site-ronlyonenaked .board-home-contrast .rdgw-card-strong > * {
+  position: relative;
+  z-index: 1;
+}
+
+.site-ronlyonenaked .board-home-contrast .board-tag-cloud .rdgw-button-secondary {
+  border-radius: 999px 1rem 999px 1rem;
+}
+
+.site-ronlyonenaked .rdgw-button-primary,
+.site-ronlyonenaked .rdgw-pill-active {
+  color: #090b0e;
 }

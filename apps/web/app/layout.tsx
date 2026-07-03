@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PlayAsControl } from "@/components/PlayAsControl";
-import { getSiteConfig } from "@/lib/site";
+import { NetworkFooter } from "@/components/NetworkFooter";
+import { getNetworkSites, getSiteConfig } from "@/lib/site";
 import "./globals.css";
 
 const site = getSiteConfig();
@@ -110,6 +111,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </p>
           </div>
         </footer>
+
+        <NetworkFooter site={site} networkSites={getNetworkSites(site.key)} />
       </body>
     </html>
   );

@@ -298,7 +298,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "Only-one-naked Reddit posts organised by creator, public or social setting, and popularity.",
     themeColor: "#0e1114",
     backgroundColor: "#0e1114",
-    brand: { wordmark: "Only One Naked", tagline: "Contrast gallery", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/ronlyonenaked/ron-logo-horizontal.svg",
+      mark: "/brand/ronlyonenaked/ron-mark.svg",
+      favicon: "/brand/ronlyonenaked/favicon.svg",
+      socialImage: "/brand/ronlyonenaked/social-avatar.png",
+      tagline: "Contrast gallery",
+    },
     nav: [
       { href: "/tags/group", label: "Group" },
       { href: "/tags/social", label: "Social" },
@@ -461,4 +467,19 @@ export function getPostTagSlugs(post: { title: string; flair: string | null }) {
   return board.tags
     .filter((tag) => tag.terms.some((term) => haystack.includes(term.toLowerCase())))
     .map((tag) => tag.slug);
+}
+
+
+export function getNetworkSites(currentSiteKey: string) {
+  return Object.values(SITE_CONFIGS)
+    .filter((site) => site.key !== currentSiteKey)
+    .map((site) => ({
+      key: site.key,
+      name: site.name,
+      shortName: site.shortName,
+      domain: site.domain,
+      description: site.description,
+      themeClass: site.themeClass,
+      subredditDisplay: site.subredditDisplay,
+    }));
 }
