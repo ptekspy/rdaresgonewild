@@ -34,7 +34,7 @@ export type ScrollCaptureResult = {
   stoppedAtKnown: boolean;
 };
 
-type PageMetrics = {
+export type PageMetrics = {
   height: number;
   postCount: number;
   postNames: string[];
@@ -92,6 +92,32 @@ export class DedicatedRedditBrowser {
   async navigate(url: string) {
     await this.send("Page.navigate", { url });
     await this.waitForReadyState();
+  }
+
+  async fetchRedditJson<T>(redditPath: string): Promise<T> {
+    const path = redditPath.startsWith("/") ? redditPath : `/${redditPath}`;
+    const url = `https://www.reddit.com${path}`;
+
+    return this.evaluate<T>(`
+      (async () => {
+        const response = await fetch(${JSON.stringify(url)}, {
+          credentials: "include",
+          headers: {
+            "accept": "application/json",
+            "x-requested-with": "XMLHttpRequest"
+          }
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error("Reddit browser fetch failed " + response.status + ": " + text.slice(0, 500));
+        }
+        return JSON.parse(text);
+      })()
+    `);
+  }
+
+  async getVisiblePostMetrics() {
+    return this.getPageMetrics();
   }
 
   async scrollAndCapture(options: {

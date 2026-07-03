@@ -1,5 +1,12 @@
-import type { RedditListingClient, RedditListingPage, RedditPost, RawRedditPost } from "./reddit.js";
-import { normalisePost } from "./reddit.js";
+import type {
+  RedditListingClient,
+  RedditListingPage,
+  RedditPost,
+  RawRedditPost,
+  SubredditListingSort,
+  SubredditTopTimeWindow,
+} from "./reddit.js";
+import { normaliseListingPage, normalisePost } from "./reddit.js";
 import { RateLimiter } from "./rate-limiter.js";
 
 interface DevtoolsTab {
@@ -29,6 +36,7 @@ interface BrowserListing {
   data: {
     children: Array<{ data: RawRedditPost }>;
     after: string | null;
+    before: string | null;
   };
 }
 
@@ -65,23 +73,21 @@ export class BrowserRedditClient implements RedditListingClient {
     return this.subreddit;
   }
 
-  async fetchSubredditNew(after?: string): Promise<RedditListingPage> {
-    const params = { limit: "100", raw_json: "1", after: after ?? "" };
+  async fetchSubredditListing(
+    sort: SubredditListingSort,
+    after?: string,
+    options: { topTime?: SubredditTopTimeWindow } = {}
+  ): Promise<RedditListingPage> {
+    const params = { limit: "100", raw_json: "1", after: after ?? "", t: sort === "top" ? options.topTime ?? "" : "" };
     const listing = await this.browserFetchJson<BrowserListing>(
-      `/r/${encodeURIComponent(this.subreddit)}/new.json?${toSearchParams(params)}`
+      `/r/${encodeURIComponent(this.subreddit)}/${sort}.json?${toSearchParams(params)}`
     );
 
-    const rawChildren = listing.data.children;
-    const posts = rawChildren
-      .map((child) => normalisePost(child.data))
-      .filter((post): post is RedditPost => Boolean(post));
+    return normaliseListingPage(listing);
+  }
 
-    return {
-      posts,
-      after: listing.data.after,
-      rawCount: rawChildren.length,
-      matchedCount: posts.length,
-    };
+  async fetchSubredditNew(after?: string): Promise<RedditListingPage> {
+    return this.fetchSubredditListing("new", after);
   }
 
   async fetchUserSubmitted(username: string, after?: string): Promise<RedditListingPage> {

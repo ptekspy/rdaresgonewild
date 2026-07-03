@@ -299,8 +299,15 @@ async function upsertPosts(
       ${post.selftext ?? ""},
       ${post.link_flair_text ?? null},
       ${post.score},
+      ${post.upvoteCount},
       ${post.upvote_ratio},
       ${post.num_comments},
+      ${post.shareCount},
+      ${post.crosspostCount},
+      ${textArraySql(post.mediaUrls)},
+      ${textArraySql(post.imageUrls)},
+      ${post.outboundUrl},
+      ${post.thumbnailUrl},
       ${post.permalink},
       ${createdAtReddit},
       ${now},
@@ -318,8 +325,15 @@ async function upsertPosts(
       "selftext",
       "flair",
       "score",
+      "upvoteCount",
       "upvoteRatio",
       "commentCount",
+      "shareCount",
+      "crosspostCount",
+      "mediaUrls",
+      "imageUrls",
+      "outboundUrl",
+      "thumbnailUrl",
       "permalink",
       "createdAtReddit",
       "crawledAt",
@@ -328,8 +342,15 @@ async function upsertPosts(
     VALUES ${Prisma.join(rows)}
     ON CONFLICT ("redditId") DO UPDATE SET
       "score" = EXCLUDED."score",
+      "upvoteCount" = EXCLUDED."upvoteCount",
       "upvoteRatio" = EXCLUDED."upvoteRatio",
       "commentCount" = EXCLUDED."commentCount",
+      "shareCount" = EXCLUDED."shareCount",
+      "crosspostCount" = EXCLUDED."crosspostCount",
+      "mediaUrls" = EXCLUDED."mediaUrls",
+      "imageUrls" = EXCLUDED."imageUrls",
+      "outboundUrl" = EXCLUDED."outboundUrl",
+      "thumbnailUrl" = EXCLUDED."thumbnailUrl",
       "flair" = EXCLUDED."flair",
       "updatedAt" = CURRENT_TIMESTAMP
   `);
@@ -433,6 +454,14 @@ function postFromAttributes(
   const createdUtc = parseCreatedUtc(attrs["created-timestamp"]);
   if (!createdUtc) return null;
 
+  const absolutePermalink = absolutizeRedditUrl(permalink);
+  const outboundUrl = extractHtmlOutboundUrl(attrs["content-href"], absolutePermalink);
+  const mediaUrls = uniqueValues([
+    ...(outboundUrl ? [outboundUrl] : []),
+    ...extractHtmlMediaUrls(innerHtml),
+  ]);
+  const imageUrls = mediaUrls.filter(isImageUrl);
+
   return {
     id: name.slice(3),
     name,
@@ -441,9 +470,16 @@ function postFromAttributes(
     author,
     link_flair_text: flairsByPostId.get(name) ?? null,
     score: parseInteger(attrs.score),
+    upvoteCount: parseInteger(attrs.score),
     upvote_ratio: parseFloatNumber(attrs["upvote-ratio"]),
     num_comments: parseInteger(attrs["comment-count"]),
-    permalink: absolutizeRedditUrl(permalink),
+    shareCount: parseIntegerOrNull(attrs["share-count"]),
+    crosspostCount: parseInteger(attrs["crosspost-count"] ?? attrs["crosspost-counts"]),
+    mediaUrls,
+    imageUrls,
+    outboundUrl,
+    thumbnailUrl: imageUrls[0] ?? null,
+    permalink: absolutePermalink,
     created_utc: createdUtc,
   };
 }
@@ -534,6 +570,11 @@ function parseInteger(value?: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseIntegerOrNull(value?: string) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function parseFloatNumber(value?: string) {
   const parsed = Number.parseFloat(value ?? "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -541,6 +582,71 @@ function parseFloatNumber(value?: string) {
 
 function absolutizeRedditUrl(value: string) {
   return value.startsWith("http") ? value : `https://www.reddit.com${value}`;
+}
+
+function extractHtmlOutboundUrl(value: string | undefined, permalink: string) {
+  const url = normaliseMediaUrl(value);
+  if (!url) return null;
+  return stripUrlQuery(url) === stripUrlQuery(permalink) ? null : url;
+}
+
+function extractHtmlMediaUrls(html: string) {
+  const urls = new Set<string>();
+  const attrPattern = /\b(?:href|poster|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+  const srcsetPattern = /\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+
+  for (const match of html.matchAll(attrPattern)) {
+    const url = normaliseMediaUrl(match[1] ?? match[2] ?? match[3]);
+    if (url && isLikelyPostMediaUrl(url)) urls.add(url);
+  }
+
+  for (const match of html.matchAll(srcsetPattern)) {
+    const srcset = decodeHtml(match[1] ?? match[2] ?? "");
+    for (const candidate of srcset.split(",")) {
+      const url = normaliseMediaUrl(candidate.trim().split(/\s+/)[0]);
+      if (url && isLikelyPostMediaUrl(url)) urls.add(url);
+    }
+  }
+
+  return [...urls];
+}
+
+function normaliseMediaUrl(value?: string) {
+  if (!value) return null;
+  const decoded = decodeHtml(value.trim());
+  if (!decoded.startsWith("http://") && !decoded.startsWith("https://")) return null;
+  return decoded;
+}
+
+function isLikelyPostMediaUrl(url: string) {
+  const lower = url.toLowerCase();
+  if (lower.includes("profileicon") || lower.includes("snoovatar") || lower.includes("/avatar")) {
+    return false;
+  }
+
+  return (
+    isImageUrl(url) ||
+    /\.(?:gifv|m3u8|mp4|webm)(?:[?#]|$)/i.test(url) ||
+    /\/\/(?:v\.redd\.it|redgifs\.com|www\.redgifs\.com|imgur\.com|i\.imgur\.com)\//i.test(url)
+  );
+}
+
+function isImageUrl(url: string) {
+  return /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(url) || /\/\/(?:i|preview)\.redd\.it\//i.test(url);
+}
+
+function stripUrlQuery(value: string) {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return value.replace(/[?#].*$/, "").replace(/\/$/, "");
+  }
+}
+
+function textArraySql(values: string[]) {
+  if (values.length === 0) return Prisma.sql`ARRAY[]::text[]`;
+  return Prisma.sql`ARRAY[${Prisma.join(values)}]::text[]`;
 }
 
 function filterBySubreddit(posts: RedditPost[], subreddit?: string) {

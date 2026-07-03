@@ -3,6 +3,7 @@ import { PLAYBOOK_DARES, LEVEL_LABELS } from "@rdgw/playbook";
 import Link from "next/link";
 import { AdSlot } from "@/components/AdSlot";
 import { HomePlayerDashboard } from "@/components/HomePlayerDashboard";
+import { HeroDareChat } from "@/components/HeroDareChat";
 
 export const dynamic = "force-dynamic";
 
@@ -69,13 +70,8 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div className="pointer-events-none relative z-0 hidden min-h-[28rem] lg:block" aria-hidden="true">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/brand/Hero-Pinup-Cropped.png"
-              alt=""
-              className="absolute bottom-[-3.25rem] right-[-1rem] h-[34rem] w-auto max-w-none drop-shadow-[0_28px_70px_rgba(249,4,124,0.25)] xl:right-2 xl:h-[36rem]"
-            />
+          <div className="relative z-10">
+            <HeroDareChat />
           </div>
         </div>
       </section>

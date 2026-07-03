@@ -1,10 +1,24 @@
-import { prisma, type BrowserCrawlJob } from "@rdgw/database";
+import { Prisma, prisma, type BrowserCrawlJob } from "@rdgw/database";
 
 export type BrowserCrawlJobType = "subreddit_new_hourly" | "subreddit_sort_daily" | "user_full_scroll";
+export type SubredditTopTimeWindow = "day" | "week" | "month" | "year" | "all";
+
+type SubredditCrawlJobType = Exclude<BrowserCrawlJobType, "user_full_scroll">;
+
+export interface SubredditJobDefinition {
+  type: SubredditCrawlJobType;
+  target: string;
+  url: string;
+  priority: number;
+  forceFullScan?: boolean;
+}
 
 const JOB_LEASE_MS = 30 * 60 * 1000;
+const DEFAULT_TOP_TIME_WINDOWS: SubredditTopTimeWindow[] = ["day", "week", "month", "year", "all"];
+const TOP_TIME_WINDOWS = new Set<SubredditTopTimeWindow>(DEFAULT_TOP_TIME_WINDOWS);
+const PROCESS_STARTED_AT = new Date();
 
-let forcedSubredditBootstrapQueued = false;
+let startupSubredditBootstrapQueued = false;
 
 export function getIntegerEnv(name: string, fallback: number) {
   const value = Number.parseInt(process.env[name] ?? "", 10);
@@ -21,6 +35,21 @@ export function getBooleanEnv(name: string, fallback = false) {
   return fallback;
 }
 
+export function getTopTimeWindowsEnv(name = "CRAWLER_TOP_TIME_WINDOWS") {
+  const configured = process.env[name]
+    ?.split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!configured || configured.length === 0) return DEFAULT_TOP_TIME_WINDOWS;
+
+  const windows = configured.filter((value): value is SubredditTopTimeWindow =>
+    TOP_TIME_WINDOWS.has(value as SubredditTopTimeWindow),
+  );
+
+  return windows.length > 0 ? [...new Set(windows)] : DEFAULT_TOP_TIME_WINDOWS;
+}
+
 export function getBotConfig() {
   const subreddit = process.env.REDDIT_SUBREDDIT ?? "daresgonewild";
 
@@ -30,20 +59,11 @@ export function getBotConfig() {
     dailySortIntervalMs: getIntegerEnv("CRAWLER_DAILY_SORT_INTERVAL_MS", 24 * 60 * 60 * 1000),
     userRecrawlMs: getIntegerEnv("CRAWLER_USER_RECRAWL_MS", 24 * 60 * 60 * 1000),
     idleSleepMs: getIntegerEnv("CRAWLER_IDLE_SLEEP_MS", 60 * 1000),
-    scrollWaitMs: getIntegerEnv("CRAWLER_SCROLL_WAIT_MS", 1500),
-    scrollStableRounds: getIntegerEnv("CRAWLER_SCROLL_STABLE_ROUNDS", 6),
-    maxScrollsPerPage: getIntegerEnv("CRAWLER_MAX_SCROLLS_PER_PAGE", 10000),
-
-    /**
-     * If true, the bot force-queues all subreddit checks once after startup,
-     * even if they ran recently.
-     *
-     * This guarantees the startup order is:
-     * 1. subreddit new
-     * 2. subreddit best/hot/top_day
-     * 3. user profile filler jobs
-     */
-    forceSubredditBeforeUsers: getBooleanEnv("CRAWLER_FORCE_SUBREDDIT_BEFORE_USERS", true),
+    maxPages: getIntegerEnv("CRAWLER_MAX_PAGES", 25),
+    backfillMaxPages: getIntegerEnv("CRAWLER_BACKFILL_MAX_PAGES", 1000),
+    topTimeWindows: getTopTimeWindowsEnv(),
+    subredditBootstrapOnStart: getBooleanEnv("CRAWLER_SUBREDDIT_BOOTSTRAP_ON_START", false),
+    htmlDiagnostics: getBooleanEnv("CRAWLER_HTML_DIAGNOSTICS", false),
   };
 }
 
@@ -51,7 +71,10 @@ export async function recoverExpiredJobs() {
   await prisma.browserCrawlJob.updateMany({
     where: {
       status: "running",
-      leaseUntil: { lt: new Date() },
+      OR: [
+        { leaseUntil: { lt: new Date() } },
+        { startedAt: { lt: PROCESS_STARTED_AT } },
+      ],
     },
     data: {
       status: "queued",
@@ -65,31 +88,20 @@ export async function recoverExpiredJobs() {
 export async function ensureDueJobs() {
   const config = getBotConfig();
   const now = new Date();
-  const subredditJobs = getSubredditJobDefinitions(config.subreddit);
-
-  const forceSubredditNow = config.forceSubredditBeforeUsers && !forcedSubredditBootstrapQueued;
-
-  if (forceSubredditNow) {
-    forcedSubredditBootstrapQueued = true;
-
-    console.log(
-      "[crawler-jobs] CRAWLER_FORCE_SUBREDDIT_BEFORE_USERS=true; " +
-        "forcing all subreddit checks before user jobs",
-    );
-  }
+  const subredditJobs = getSubredditJobDefinitions(config.subreddit, config.topTimeWindows);
 
   for (const job of subredditJobs) {
     await ensureRecurringJob({
       ...job,
       intervalMs: job.type === "subreddit_new_hourly" ? config.newIntervalMs : config.dailySortIntervalMs,
-      forceNow: forceSubredditNow,
     });
   }
 
-  /**
-   * User jobs are filler work.
-   * If any subreddit job is due, do not spend this loop creating more user jobs.
-   */
+  if (config.subredditBootstrapOnStart && !startupSubredditBootstrapQueued) {
+    startupSubredditBootstrapQueued = true;
+    await scheduleStartupSubredditBootstrap(subredditJobs);
+  }
+
   if (await hasDueSubredditJob()) {
     return;
   }
@@ -114,35 +126,59 @@ export async function ensureDueJobs() {
   }
 }
 
-function getSubredditJobDefinitions(subreddit: string) {
+export function getSubredditJobDefinitions(
+  subreddit: string,
+  topTimeWindows = DEFAULT_TOP_TIME_WINDOWS,
+): SubredditJobDefinition[] {
   const base = `https://www.reddit.com/r/${subreddit}`;
-
-  return [
+  const jobs: SubredditJobDefinition[] = [
     {
-      type: "subreddit_new_hourly" as const,
+      type: "subreddit_new_hourly",
       target: subreddit,
       url: `${base}/new/`,
       priority: 100,
     },
     {
-      type: "subreddit_sort_daily" as const,
+      type: "subreddit_sort_daily",
       target: `${subreddit}:best`,
       url: `${base}/best/`,
       priority: 80,
     },
     {
-      type: "subreddit_sort_daily" as const,
+      type: "subreddit_sort_daily",
       target: `${subreddit}:hot`,
       url: `${base}/hot/`,
       priority: 80,
     },
-    {
-      type: "subreddit_sort_daily" as const,
-      target: `${subreddit}:top_day`,
-      url: `${base}/top/?t=day`,
-      priority: 80,
-    },
   ];
+
+  for (const window of topTimeWindows) {
+    jobs.push({
+      type: "subreddit_sort_daily",
+      target: `${subreddit}:top_${window}`,
+      url: `${base}/top/?t=${window}`,
+      priority: 80,
+    });
+  }
+
+  return jobs;
+}
+
+async function scheduleStartupSubredditBootstrap(jobs: SubredditJobDefinition[]) {
+  const now = new Date();
+
+  console.log(
+    "[crawler-jobs] CRAWLER_SUBREDDIT_BOOTSTRAP_ON_START=true; queueing one startup subreddit pass",
+  );
+
+  for (const job of jobs) {
+    await upsertJob({
+      ...job,
+      scheduledFor: now,
+      forceReschedule: true,
+      forceFullScan: true,
+    });
+  }
 }
 
 async function hasDueSubredditJob() {
@@ -223,6 +259,7 @@ export async function completeJob(job: BrowserCrawlJob) {
       scheduledFor: nextScheduledFor,
       startedAt: null,
       leaseUntil: null,
+      state: Prisma.JsonNull,
     },
   });
 }
@@ -248,35 +285,24 @@ async function ensureRecurringJob(input: {
   url: string;
   priority: number;
   intervalMs: number;
-  forceNow?: boolean;
 }) {
-  const now = new Date();
-
   const existing = await prisma.browserCrawlJob.findUnique({
     where: { dedupeKey: dedupeKey(input.type, input.target) },
   });
 
   if (!existing) {
-    await upsertJob({
-      ...input,
-      scheduledFor: now,
-      forceReschedule: true,
-    });
+    await upsertJob({ ...input, scheduledFor: new Date(), forceReschedule: true });
     return;
   }
 
-  if (existing.status === "running") {
-    return;
-  }
-
-  if (input.forceNow || existing.scheduledFor <= now) {
+  if (existing.status !== "running" && existing.scheduledFor <= new Date()) {
     await prisma.browserCrawlJob.update({
       where: { id: existing.id },
       data: {
         status: "queued",
         url: input.url,
         priority: input.priority,
-        scheduledFor: input.forceNow ? now : existing.scheduledFor,
+        completedAt: null,
       },
     });
   }
@@ -289,6 +315,7 @@ async function upsertJob(input: {
   priority: number;
   scheduledFor: Date;
   forceReschedule?: boolean;
+  forceFullScan?: boolean;
 }) {
   const key = dedupeKey(input.type, input.target);
 
@@ -298,10 +325,6 @@ async function upsertJob(input: {
 
   if (existing?.status === "running") return;
 
-  /**
-   * For user jobs, do not pull a future completed job back to now just because
-   * the author appeared in another scan.
-   */
   if (
     existing &&
     !input.forceReschedule &&
@@ -314,9 +337,16 @@ async function upsertJob(input: {
   await prisma.browserCrawlJob.upsert({
     where: { dedupeKey: key },
     update: {
+      type: input.type,
+      target: input.target,
       url: input.url,
       priority: input.priority,
       scheduledFor: input.scheduledFor,
+      startedAt: null,
+      completedAt: null,
+      leaseUntil: null,
+      lastError: null,
+      state: input.forceFullScan ? { forceFullScan: true } : Prisma.JsonNull,
       status:
         existing?.status === "completed" || existing?.status === "failed"
           ? "queued"
@@ -329,10 +359,11 @@ async function upsertJob(input: {
       url: input.url,
       priority: input.priority,
       scheduledFor: input.scheduledFor,
+      state: input.forceFullScan ? { forceFullScan: true } : undefined,
     },
   });
 }
 
-function dedupeKey(type: string, target: string) {
+export function dedupeKey(type: string, target: string) {
   return `${type}:${target.toLowerCase()}`;
 }

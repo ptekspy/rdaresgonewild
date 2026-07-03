@@ -12,21 +12,28 @@ datasource db {
 // ─── Subreddit Posts ──────────────────────────────────────────────────────────
 
 model DgwPost {
-  id             String   @id @default(cuid())
+  id              String   @id @default(cuid())
   /// Reddit post ID (t3_xxxxx without prefix)
-  redditId       String   @unique
-  authorUsername String
-  author         DgwUser  @relation(fields: [authorUsername], references: [username], onDelete: Cascade)
-  title          String
-  selftext       String   @default("")
-  flair          String?
-  score          Int      @default(0)
-  upvoteRatio    Float?
-  commentCount   Int      @default(0)
-  permalink      String
+  redditId        String   @unique
+  authorUsername  String
+  author          DgwUser  @relation(fields: [authorUsername], references: [username], onDelete: Cascade)
+  title           String
+  selftext        String   @default("")
+  flair           String?
+  score           Int      @default(0)
+  upvoteCount     Int?
+  upvoteRatio     Float?
+  commentCount    Int      @default(0)
+  shareCount      Int?
+  crosspostCount  Int      @default(0)
+  mediaUrls       String[] @default([])
+  imageUrls       String[] @default([])
+  outboundUrl     String?
+  thumbnailUrl    String?
+  permalink       String
   createdAtReddit DateTime
-  crawledAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  crawledAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   playbookCompletions  PlaybookCompletion[]
   communityCompletions CommunityCompletion[]
@@ -39,17 +46,17 @@ model DgwPost {
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 model DgwUser {
-  id          String    @id @default(cuid())
-  username    String    @unique
+  id             String    @id @default(cuid())
+  username       String    @unique
   /// never | syncing | fresh | stale
-  syncStatus  String    @default("never")
-  lastSyncedAt DateTime?
+  syncStatus     String    @default("never")
+  lastSyncedAt   DateTime?
   /// Reddit fullname of the oldest post fetched (for pagination)
   lastSyncCursor String?
   /// Approximate total posts seen in r/daresgonewild
-  postCount   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  postCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   posts                DgwPost[]
   playbookCompletions  PlaybookCompletion[]
@@ -83,17 +90,17 @@ model PlaybookCompletion {
 }
 
 model CommunityCompletion {
-  id           String    @id @default(cuid())
-  username     String
-  user         DgwUser   @relation(fields: [username], references: [username], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  username      String
+  user          DgwUser   @relation(fields: [username], references: [username], onDelete: Cascade)
   /// Username of the person who issued the dare
   darerUsername String
-  postId       String
-  post         DgwPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
-  verified     Boolean?
-  detectedAt   DateTime  @default(now())
-  verifiedAt   DateTime?
-  rejectedAt   DateTime?
+  postId        String
+  post          DgwPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  verified      Boolean?
+  detectedAt    DateTime  @default(now())
+  verifiedAt    DateTime?
+  rejectedAt    DateTime?
 
   @@unique([username, postId])
   @@index([username])
@@ -104,30 +111,30 @@ model CommunityCompletion {
 // ─── Crawler State ────────────────────────────────────────────────────────────
 
 model CrawlRun {
-  id          String    @id @default(cuid())
+  id                  String    @id @default(cuid())
   /// "subreddit_new" | "user_full" | "user_incremental"
-  type        String
+  type                String
   /// username for user runs, "daresgonewild" for subreddit runs
-  target      String
-  status      String    @default("running")
-  pagesScanned Int      @default(0)
-  postsFound  Int       @default(0)
-  completionsDetected Int @default(0)
-  error       String?
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
+  target              String
+  status              String    @default("running")
+  pagesScanned        Int       @default(0)
+  postsFound          Int       @default(0)
+  completionsDetected Int       @default(0)
+  error               String?
+  startedAt           DateTime  @default(now())
+  completedAt         DateTime?
 
   @@index([type, target])
   @@index([status, startedAt])
 }
 
 model CrawlCursor {
-  id          String   @id @default(cuid())
+  id         String   @id @default(cuid())
   /// "subreddit_new" | "subreddit_hot"
-  type        String   @unique
-  lastCursor  String?
-  lastRunAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  type       String   @unique
+  lastCursor String?
+  lastRunAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model BrowserCrawlJob {
@@ -156,16 +163,16 @@ model BrowserCrawlJob {
 // ─── Ads ─────────────────────────────────────────────────────────────────────
 
 model AdSlot {
-  id          String      @id @default(cuid())
+  id          String   @id @default(cuid())
   /// e.g. "leaderboard_top", "dare_picker_sidebar", "profile_sidebar"
-  slotKey     String      @unique
+  slotKey     String   @unique
   label       String
   description String?
-  enabled     Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  contents    AdContent[]
+  contents AdContent[]
 }
 
 model AdContent {
