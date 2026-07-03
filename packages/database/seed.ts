@@ -94,6 +94,60 @@ const SITE_SUBREDDITS = [
   { siteKey: "rbralessforever", subreddit: "BralessForever" },
 ] as const;
 
+const IMAGE_HOUSE_ADS = [
+  {
+    suffix: "image-1",
+    asset: "advertise-1.svg",
+    headline: "Advertise here",
+    body: "Reach a focused Reddit-grown audience.",
+  },
+  {
+    suffix: "image-2",
+    asset: "advertise-2.svg",
+    headline: "Own this placement",
+    body: "Creator tools, platforms, services, and sponsors welcome.",
+  },
+  {
+    suffix: "image-3",
+    asset: "advertise-3.svg",
+    headline: "Contact us to advertise",
+    body: "Simple placements for brands that fit the community.",
+  },
+] as const;
+
+const TEXT_HOUSE_ADS = [
+  {
+    suffix: "text-1",
+    headline: "Advertise on this site",
+    body: "Put your brand in front of a focused Reddit-grown audience. Contact us for rates and placement options.",
+    ctaText: "Contact us",
+  },
+  {
+    suffix: "text-2",
+    headline: "Sponsor this community board",
+    body: "Reach creators and viewers with direct, first-party ad slots across the Paid Politely network.",
+    ctaText: "Advertise here",
+  },
+] as const;
+
+function contactUrlForSite(site: (typeof SITES)[number]) {
+  const subject = `Advertising on ${site.domain}`;
+  const body = [
+    "Hi Paddy,",
+    "",
+    `I'd like to advertise on ${site.domain}.`,
+    "",
+    "Company or name:",
+    "Website:",
+    "Budget or dates:",
+    "Preferred placement:",
+    "",
+    "Thanks!",
+  ].join("\r\n");
+
+  return `mailto:coderpaddy+rdgw@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 async function upsertHouseAdvertiser() {
   const existing = await prisma.advertiser.findFirst({
     where: { name: "Paid Politely" },
@@ -185,6 +239,76 @@ async function upsertHouseCreative(campaignId: string) {
   });
 }
 
+async function upsertCreativeByName(
+  campaignId: string,
+  name: string,
+  data: {
+    type: CreativeType;
+    imageUrl?: string;
+    headline: string;
+    body: string;
+    ctaText: string;
+    targetUrl: string;
+    altText: string;
+  },
+) {
+  const existing = await prisma.creative.findFirst({
+    where: { campaignId, name },
+  });
+
+  const creativeData = {
+    ...data,
+    status: CreativeStatus.APPROVED,
+    category: AdultAdCategory.INTERNAL,
+    containsExplicitImage: false,
+    requiresAgeGate: true,
+    containsExternalTracking: false,
+    approvedAt: new Date(),
+  };
+
+  if (existing) {
+    return prisma.creative.update({
+      where: { id: existing.id },
+      data: creativeData,
+    });
+  }
+
+  return prisma.creative.create({
+    data: {
+      campaignId,
+      name,
+      ...creativeData,
+    },
+  });
+}
+
+async function upsertSiteHouseCreatives(campaignId: string, site: (typeof SITES)[number]) {
+  const targetUrl = contactUrlForSite(site);
+  const imageCreatives = IMAGE_HOUSE_ADS.map((ad) =>
+    upsertCreativeByName(campaignId, `${site.key}:${ad.suffix}`, {
+      type: CreativeType.IMAGE,
+      imageUrl: `https://${site.domain}/ads/${site.key}/${ad.asset}`,
+      headline: ad.headline,
+      body: `${ad.body} ${site.domain}`,
+      ctaText: "Contact us",
+      targetUrl,
+      altText: `${ad.headline} on ${site.name}`,
+    }),
+  );
+  const textCreatives = TEXT_HOUSE_ADS.map((ad) =>
+    upsertCreativeByName(campaignId, `${site.key}:${ad.suffix}`, {
+      type: CreativeType.TEXT,
+      headline: ad.headline,
+      body: `${ad.body} Site: ${site.domain}.`,
+      ctaText: ad.ctaText,
+      targetUrl,
+      altText: `${ad.headline} on ${site.name}`,
+    }),
+  );
+
+  return Promise.all([...imageCreatives, ...textCreatives]);
+}
+
 async function main() {
   const seededSites = await Promise.all(
     SITES.map((siteConfig) =>
@@ -232,6 +356,11 @@ async function main() {
   const advertiser = await upsertHouseAdvertiser();
   const campaign = await upsertHouseCampaign(advertiser.id);
   const creative = await upsertHouseCreative(campaign.id);
+  const siteHouseCreatives = new Map<string, Awaited<ReturnType<typeof upsertSiteHouseCreatives>>>();
+
+  for (const siteConfig of SITES) {
+    siteHouseCreatives.set(siteConfig.key, await upsertSiteHouseCreatives(campaign.id, siteConfig));
+  }
 
   await Promise.all(
     SITE_SUBREDDITS.map((mapping) =>
@@ -289,8 +418,47 @@ async function main() {
     }
   }
 
+  for (const site of seededSites) {
+    const siteCreatives = siteHouseCreatives.get(site.key) ?? [];
+    const sitePlacements = allPlacements.filter((placement) => placement.siteId === site.id);
+
+    for (const placement of sitePlacements) {
+      for (const siteCreative of siteCreatives) {
+        const existingBooking = await prisma.booking.findFirst({
+          where: {
+            campaignId: campaign.id,
+            creativeId: siteCreative.id,
+            placementId: placement.id,
+          },
+        });
+
+        const data = {
+          enabled: true,
+          weight: 100,
+          priority: 120,
+        };
+
+        if (existingBooking) {
+          await prisma.booking.update({
+            where: { id: existingBooking.id },
+            data,
+          });
+        } else {
+          await prisma.booking.create({
+            data: {
+              campaignId: campaign.id,
+              creativeId: siteCreative.id,
+              placementId: placement.id,
+              ...data,
+            },
+          });
+        }
+      }
+    }
+  }
+
   console.log(
-    `Seeded Paid Politely Ads: ${seededSites.length} sites, ${allPlacements.length} placements, ${SITE_SUBREDDITS.length} subreddit mappings, house ads on homepage_top.`,
+    `Seeded Paid Politely Ads: ${seededSites.length} sites, ${allPlacements.length} placements, ${SITE_SUBREDDITS.length} subreddit mappings, ${SITES.length * 5} site-specific house creatives.`,
   );
 }
 
