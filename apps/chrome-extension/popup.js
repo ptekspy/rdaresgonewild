@@ -14,25 +14,26 @@ let activeTab = null;
 init();
 
 async function init() {
-  const [{ apiBase }, state, tab] = await Promise.all([
+  activeTab = await getActiveTab();
+
+  const [{ apiBase }, state] = await Promise.all([
     chrome.storage.local.get({ apiBase: DEFAULT_API_BASE }),
-    sendMessage({ type: "GET_STATE" }),
-    getActiveTab(),
+    activeTab?.id ? sendMessage({ type: "GET_STATE", tabId: activeTab.id }) : DEFAULT_STATE,
   ]);
 
-  activeTab = tab;
   apiBaseInput.value = apiBase;
-  pageUrl.textContent = tab?.url || "Open a Reddit page to crawl it.";
+  pageUrl.textContent = activeTab?.url || "Open a Reddit page to crawl it.";
   renderState(state);
 
   startButton.addEventListener("click", startSync);
   stopButton.addEventListener("click", stopSync);
+
   apiBaseInput.addEventListener("change", () => {
     chrome.storage.local.set({ apiBase: normaliseApiBase(apiBaseInput.value) });
   });
 
   chrome.runtime.onMessage.addListener((payload) => {
-    if (payload?.type === "SYNC_STATE") {
+    if (payload?.type === "SYNC_STATE" && payload.tabId === activeTab?.id) {
       renderState(payload.state);
     }
   });
@@ -48,12 +49,24 @@ async function startSync() {
   }
 
   await chrome.storage.local.set({ apiBase });
-  const state = await sendMessage({ type: "START_PAGE_CRAWL", tabId: tab.id, pageUrl: tab.url, apiBase });
+  const state = await sendMessage({
+    type: "START_PAGE_CRAWL",
+    tabId: tab.id,
+    pageUrl: tab.url,
+    apiBase,
+  });
   renderState(state);
 }
 
 async function stopSync() {
-  const state = await sendMessage({ type: "STOP_SYNC" });
+  const tab = activeTab || (await getActiveTab());
+
+  if (!tab?.id) {
+    message.textContent = "No active tab found.";
+    return;
+  }
+
+  const state = await sendMessage({ type: "STOP_SYNC", tabId: tab.id });
   renderState(state);
 }
 

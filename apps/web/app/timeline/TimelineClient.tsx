@@ -228,6 +228,13 @@ export function TimelineClient({ initialItems, initialNextCursor, initialFilters
 function TimelineCard({ item }: { item: TimelineItem }) {
   const created = new Date(item.createdAtReddit);
   const externalUrl = item.outboundUrl && item.outboundUrl !== item.permalink ? item.outboundUrl : null;
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [item.previewUrl]);
+
+  const previewUrl = item.previewUrl && !previewFailed ? item.previewUrl : null;
 
   return (
     <article className="rdgw-card flex min-h-full flex-col overflow-hidden rounded-2xl">
@@ -237,19 +244,22 @@ function TimelineCard({ item }: { item: TimelineItem }) {
         rel="noopener noreferrer"
         className="group relative block aspect-[16/10] overflow-hidden bg-white/[0.035]"
       >
-        {item.previewUrl ? (
+        {previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={item.previewUrl}
+            src={previewUrl}
             alt=""
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
             loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setPreviewFailed(true)}
           />
         ) : (
           <div className="flex h-full items-center justify-center bg-gradient-to-br from-zinc-900 to-zinc-950 text-sm font-bold text-zinc-600">
             No preview
           </div>
         )}
+
         <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/75 to-transparent" />
         <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-2">
           {item.isRedgifs && <Badge label="Redgifs" tone="orange" />}

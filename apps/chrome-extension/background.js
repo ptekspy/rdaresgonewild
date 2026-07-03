@@ -548,7 +548,6 @@ function extractUrls(raw, permalink) {
   };
 
   addMediaUrl(outboundUrl, { image: isImageUrl(outboundUrl) });
-  addMediaUrl(thumbnailUrl, { image: true });
   addPreview(raw.preview, addMediaUrl);
   addMediaBlock(raw.media, addMediaUrl);
   addMediaBlock(raw.secure_media, addMediaUrl);
@@ -676,8 +675,8 @@ function isImageUrl(value) {
 
   return (
     /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value) ||
-    /\/\/(?:i|preview|external-preview)\.redd\.it\//i.test(value) ||
-    /\/\/(?:b|a)\.thumbs\.redditmedia\.com\//i.test(value)
+    /\/\/(?:i|preview)\.redd\.it\//i.test(value) ||
+    /\/\/media\.redgifs\.com\/.+-poster\.(?:jpe?g|png|webp)/i.test(value)
   );
 }
 
@@ -711,16 +710,23 @@ async function ensureInstallId() {
   return installId;
 }
 
-async function getState() {
-  const data = await chrome.storage.local.get({ [STORAGE_KEYS.state]: DEFAULT_STATE });
-  return data[STORAGE_KEYS.state] || DEFAULT_STATE;
+async function getState(tabId) {
+  if (!Number.isInteger(tabId)) return DEFAULT_STATE;
+
+  const data = await chrome.storage.local.get({
+    [stateKey(tabId)]: { ...DEFAULT_STATE, tabId },
+  });
+
+  return data[stateKey(tabId)] || { ...DEFAULT_STATE, tabId };
 }
 
-async function setState(patch) {
-  const current = await getState();
-  const next = { ...current, ...patch };
-  await chrome.storage.local.set({ [STORAGE_KEYS.state]: next });
-  chrome.runtime.sendMessage({ type: "SYNC_STATE", state: next }).catch(() => {});
+async function setState(tabId, patch) {
+  const current = await getState(tabId);
+  const next = { ...current, ...patch, tabId };
+
+  await chrome.storage.local.set({ [stateKey(tabId)]: next });
+  chrome.runtime.sendMessage({ type: "SYNC_STATE", tabId, state: next }).catch(() => {});
+
   return next;
 }
 
