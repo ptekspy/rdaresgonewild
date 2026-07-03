@@ -33,18 +33,25 @@ model DgwPost {
   outboundUrl     String?
   thumbnailUrl    String?
   permalink       String
+  rawJson         Json?
+  source          String   @default("crawler")
+  ingestSessionId String?
   createdAtReddit DateTime
   crawledAt       DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   playbookCompletions  PlaybookCompletion[]
   communityCompletions CommunityCompletion[]
+  ingestSession        ExtensionIngestSession? @relation(fields: [ingestSessionId], references: [id], onDelete: SetNull)
 
   @@index([authorUsername])
   @@index([subreddit])
   @@index([subreddit, createdAtReddit])
   @@index([subreddit, score])
   @@index([flair])
+  @@index([source])
+  @@index([ingestSessionId])
   @@index([createdAtReddit])
 }
 
@@ -166,6 +173,46 @@ model BrowserCrawlJob {
   @@index([status, scheduledFor, priority])
   @@index([type, target])
   @@index([leaseUntil])
+}
+
+// ─── Extension Ingestion ─────────────────────────────────────────────────────
+
+model ExtensionIngestSession {
+  id                 String    @id @default(cuid())
+  redditUsername     String
+  extensionInstallId String
+  uploadTokenHash    String
+  clientVersion      String?
+  crawlMode          String    @default("profile")
+  sourceUrl          String?
+  status             String    @default("running")
+  pagesScanned       Int       @default(0)
+  postsReceived      Int       @default(0)
+  lastCursor         String?
+  lastError          String?
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  updatedAt          DateTime  @updatedAt
+
+  posts DgwPost[]
+
+  @@index([redditUsername])
+  @@index([extensionInstallId])
+  @@index([crawlMode])
+  @@index([status, startedAt])
+}
+
+model SiteSubreddit {
+  id        String   @id @default(cuid())
+  siteKey   String
+  subreddit String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([siteKey, subreddit])
+  @@index([siteKey, enabled])
+  @@index([subreddit])
 }
 
 // ─── Ads ─────────────────────────────────────────────────────────────────────

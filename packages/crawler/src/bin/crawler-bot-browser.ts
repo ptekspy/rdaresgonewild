@@ -66,12 +66,15 @@ process.once("SIGTERM", requestStop);
 async function main() {
   const config = getBotConfig();
   const browser = new DedicatedRedditBrowser();
+  const startUrl = `https://www.reddit.com/r/${config.subreddit}/new/`;
 
   console.log("[crawler-bot] starting always-on browser crawler", config);
 
   await recoverExpiredJobs();
-  await browser.start(`https://www.reddit.com/r/${config.subreddit}/new/`);
+  await browser.start(startUrl);
   await browser.setRedditCookies(process.env.REDDIT_COOKIE ?? "");
+  await browser.navigate(startUrl);
+  await configureUserJobs(browser);
 
   try {
     while (!stopping) {
@@ -112,7 +115,9 @@ async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
 
   const result =
     job.type === "user_full_scroll"
-      ? await runUserJob(browser, job)
+      ? config.userJobsEnabled
+        ? await runUserJob(browser, job)
+        : skipUserJob(job)
       : await runSubredditJob(browser, job, forceFullScan);
 
   if (config.htmlDiagnostics && result.renderedPostsSeen !== undefined) {
@@ -124,8 +129,9 @@ async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
   }
 
   if (job.type === "subreddit_new_hourly" || job.type === "subreddit_sort_daily") {
+    const subreddit = parseSubredditFromTarget(job.target);
     for (const author of result.authors) {
-      await queueUserJob(author, new Date(), getBotConfig().subreddit);
+      await queueUserJob(author, new Date(), subreddit);
     }
   }
 
@@ -136,13 +142,46 @@ async function runJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob) {
   );
 }
 
+async function configureUserJobs(browser: DedicatedRedditBrowser) {
+  const explicit = process.env.CRAWLER_USER_JOBS_ENABLED?.trim().toLowerCase();
+  const explicitlyDisabled = explicit && ["0", "false", "no", "n", "off"].includes(explicit);
+
+  if (explicitlyDisabled) {
+    console.log("[crawler-bot] user backfill jobs disabled by CRAWLER_USER_JOBS_ENABLED=false");
+    return;
+  }
+
+  const hasSession = await browser.hasRedditSession();
+  process.env.CRAWLER_USER_JOBS_ENABLED = hasSession ? "true" : "false";
+
+  console.log(
+    hasSession
+      ? "[crawler-bot] Reddit session detected; user backfill jobs enabled"
+      : "[crawler-bot] no logged-in Reddit session detected; subreddit jobs enabled, user backfills will be skipped",
+  );
+}
+
+function skipUserJob(job: BrowserCrawlJob): JobRunResult {
+  console.log(`[crawler-bot] skipping ${job.type}:${job.target}; no authenticated Reddit session`);
+  return {
+    pagesScanned: 0,
+    rawPostsSeen: 0,
+    postsProcessed: 0,
+    completionsFound: 0,
+    authors: [],
+    exhausted: false,
+    reachedKnown: false,
+  };
+}
+
 async function runSubredditJob(
   browser: DedicatedRedditBrowser,
   job: BrowserCrawlJob,
   forceFullScan: boolean,
 ): Promise<JobRunResult> {
   const config = getBotConfig();
-  const listing = parseSubredditJob(job, config.subreddit);
+  const subreddit = parseSubredditFromTarget(job.target);
+  const listing = parseSubredditJob(job, subreddit);
   const stopAtKnown = job.type === "subreddit_new_hourly" && !forceFullScan;
   const maxPages = stopAtKnown ? config.maxPages : config.backfillMaxPages;
   const crawlRun = await prisma.crawlRun.create({
@@ -165,7 +204,7 @@ async function runSubredditJob(
 
   try {
     while (pagesScanned < maxPages && !reachedKnown) {
-      const page = await fetchSubredditListingPage(browser, config.subreddit, listing.sort, after, listing.topTime);
+      const page = await fetchSubredditListingPage(browser, subreddit, listing.sort, after, listing.topTime);
       pagesScanned++;
       rawPostsSeen += page.rawCount;
 
@@ -174,7 +213,7 @@ async function runSubredditJob(
       }
 
       const knownRedditIds = stopAtKnown
-        ? await fetchKnownRedditIds(config.subreddit, page.posts.map((post) => post.id))
+        ? await fetchKnownRedditIds(subreddit, page.posts.map((post) => post.id))
         : new Set<string>();
 
       for (const post of page.posts) {
@@ -210,9 +249,9 @@ async function runSubredditJob(
 
     if (job.type === "subreddit_new_hourly" && firstSeenCursor) {
       await prisma.crawlCursor.upsert({
-        where: { type_target: { type: "subreddit_new", target: config.subreddit } },
+        where: { type_target: { type: "subreddit_new", target: subreddit } },
         update: { lastCursor: firstSeenCursor, lastRunAt: new Date() },
-        create: { type: "subreddit_new", target: config.subreddit, lastCursor: firstSeenCursor },
+        create: { type: "subreddit_new", target: subreddit, lastCursor: firstSeenCursor },
       });
     }
 
@@ -248,9 +287,9 @@ async function runSubredditJob(
 
 async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob): Promise<JobRunResult> {
   const config = getBotConfig();
-  const username = parseUserJobTarget(job.target, config.subreddit);
+  const { subreddit, username } = parseUserJobTarget(job.target, config.subreddit);
   const crawlRun = await prisma.crawlRun.create({
-    data: { type: "browser_user_full_scroll", target: `${config.subreddit}:${username}` },
+    data: { type: "browser_user_full_scroll", target: `${subreddit}:${username}` },
   });
 
   await prisma.dgwUser.upsert({
@@ -272,7 +311,7 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
 
   try {
     while (pagesScanned < config.maxPages) {
-      const page = await fetchUserSubmittedPage(browser, config.subreddit, username, after);
+      const page = await fetchUserSubmittedPage(browser, subreddit, username, after);
       pagesScanned++;
       rawPostsSeen += page.rawCount;
 
@@ -287,7 +326,7 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
       });
 
       console.log(
-        `[crawler-bot] page ${pagesScanned}/${config.maxPages} user_full_scroll:${config.subreddit}:${username}; ` +
+        `[crawler-bot] page ${pagesScanned}/${config.maxPages} user_full_scroll:${subreddit}:${username}; ` +
           `raw=${page.rawCount}; matches=${page.posts.length}; processed=${postsProcessed}; ` +
           `next=${page.after ?? "none"}`,
       );
@@ -340,9 +379,16 @@ async function runUserJob(browser: DedicatedRedditBrowser, job: BrowserCrawlJob)
   }
 }
 
-function parseUserJobTarget(target: string, subreddit: string) {
-  const prefix = `${subreddit}:`;
-  return target.startsWith(prefix) ? target.slice(prefix.length) : target;
+function parseUserJobTarget(target: string, fallbackSubreddit: string) {
+  const separatorIndex = target.indexOf(":");
+  if (separatorIndex === -1) {
+    return { subreddit: fallbackSubreddit, username: target };
+  }
+
+  return {
+    subreddit: target.slice(0, separatorIndex),
+    username: target.slice(separatorIndex + 1),
+  };
 }
 
 function isForceFullScan(value: unknown) {
@@ -366,6 +412,10 @@ function parseSubredditJob(job: BrowserCrawlJob, subreddit: string) {
   }
 
   throw new Error(`Unsupported subreddit job target for r/${subreddit}: ${job.target}`);
+}
+
+function parseSubredditFromTarget(target: string) {
+  return target.split(":")[0] ?? target;
 }
 
 async function fetchSubredditListingPage(

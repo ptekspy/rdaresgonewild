@@ -4,6 +4,7 @@ export type BrowserCrawlJobType = "subreddit_new_hourly" | "subreddit_sort_daily
 export type SubredditTopTimeWindow = "day" | "week" | "month" | "year" | "all";
 
 type SubredditCrawlJobType = Exclude<BrowserCrawlJobType, "user_full_scroll">;
+type SubredditBackfillSort = "new" | "best" | "hot" | `top_${SubredditTopTimeWindow}`;
 
 export interface SubredditJobDefinition {
   type: SubredditCrawlJobType;
@@ -11,6 +12,12 @@ export interface SubredditJobDefinition {
   url: string;
   priority: number;
   forceFullScan?: boolean;
+}
+
+export interface QueueHistoryBackfillOptions {
+  subreddits?: string[];
+  sorts?: SubredditBackfillSort[];
+  scheduledFor?: Date;
 }
 
 const JOB_LEASE_MS = 30 * 60 * 1000;
@@ -50,11 +57,21 @@ export function getTopTimeWindowsEnv(name = "CRAWLER_TOP_TIME_WINDOWS") {
   return windows.length > 0 ? [...new Set(windows)] : DEFAULT_TOP_TIME_WINDOWS;
 }
 
+export function getSubredditsEnv() {
+  const configured = (process.env.CRAWLER_SUBREDDITS ?? process.env.REDDIT_SUBREDDIT ?? "daresgonewild")
+    .split(",")
+    .map((value) => value.trim().replace(/^r\//i, ""))
+    .filter(Boolean);
+
+  return [...new Set(configured.map((value) => value.toLowerCase()))];
+}
+
 export function getBotConfig() {
-  const subreddit = process.env.REDDIT_SUBREDDIT ?? "daresgonewild";
+  const subreddits = getSubredditsEnv();
 
   return {
-    subreddit,
+    subreddit: subreddits[0] ?? "daresgonewild",
+    subreddits,
     newIntervalMs: getIntegerEnv("CRAWLER_NEW_INTERVAL_MS", 60 * 60 * 1000),
     dailySortIntervalMs: getIntegerEnv("CRAWLER_DAILY_SORT_INTERVAL_MS", 24 * 60 * 60 * 1000),
     userRecrawlMs: getIntegerEnv("CRAWLER_USER_RECRAWL_MS", 24 * 60 * 60 * 1000),
@@ -64,6 +81,7 @@ export function getBotConfig() {
     topTimeWindows: getTopTimeWindowsEnv(),
     subredditBootstrapOnStart: getBooleanEnv("CRAWLER_SUBREDDIT_BOOTSTRAP_ON_START", false),
     htmlDiagnostics: getBooleanEnv("CRAWLER_HTML_DIAGNOSTICS", false),
+    userJobsEnabled: getBooleanEnv("CRAWLER_USER_JOBS_ENABLED", Boolean(process.env.REDDIT_COOKIE)),
   };
 }
 
@@ -88,7 +106,9 @@ export async function recoverExpiredJobs() {
 export async function ensureDueJobs() {
   const config = getBotConfig();
   const now = new Date();
-  const subredditJobs = getSubredditJobDefinitions(config.subreddit, config.topTimeWindows);
+  const subredditJobs = config.subreddits.flatMap((subreddit) =>
+    getSubredditJobDefinitions(subreddit, config.topTimeWindows),
+  );
 
   for (const job of subredditJobs) {
     await ensureRecurringJob({
@@ -106,24 +126,30 @@ export async function ensureDueJobs() {
     return;
   }
 
+  if (!config.userJobsEnabled) {
+    return;
+  }
+
   const cutoff = new Date(now.getTime() - config.userRecrawlMs);
 
-  const users = await prisma.dgwUser.findMany({
-    where: {
-      posts: { some: { subreddit: config.subreddit } },
-      OR: [
-        { lastSyncedAt: null },
-        { lastSyncedAt: { lt: cutoff } },
-        { syncStatus: { in: ["never", "stale"] } },
-      ],
-    },
-    orderBy: [{ lastSyncedAt: "asc" }, { updatedAt: "asc" }],
-    take: 100,
-    select: { username: true },
-  });
+  for (const subreddit of config.subreddits) {
+    const users = await prisma.dgwUser.findMany({
+      where: {
+        posts: { some: { subreddit } },
+        OR: [
+          { lastSyncedAt: null },
+          { lastSyncedAt: { lt: cutoff } },
+          { syncStatus: { in: ["never", "stale"] } },
+        ],
+      },
+      orderBy: [{ lastSyncedAt: "asc" }, { updatedAt: "asc" }],
+      take: 100,
+      select: { username: true },
+    });
 
-  for (const user of users) {
-    await queueUserJob(user.username, now, config.subreddit);
+    for (const user of users) {
+      await queueUserJob(user.username, now, subreddit);
+    }
   }
 }
 
@@ -163,6 +189,33 @@ export function getSubredditJobDefinitions(
   }
 
   return jobs;
+}
+
+export async function queueSubredditHistoryBackfill(options: QueueHistoryBackfillOptions = {}) {
+  const config = getBotConfig();
+  const subreddits = options.subreddits?.length ? normaliseSubreddits(options.subreddits) : config.subreddits;
+  const sorts = options.sorts?.length ? [...new Set(options.sorts)] : getDefaultBackfillSorts(config.topTimeWindows);
+  const scheduledFor = options.scheduledFor ?? new Date();
+  const queued: SubredditJobDefinition[] = [];
+
+  for (const subreddit of subreddits) {
+    const jobs = getSubredditJobDefinitions(subreddit, config.topTimeWindows).filter((job) =>
+      sorts.includes(getBackfillSortForJob(job)),
+    );
+
+    for (const job of jobs) {
+      await upsertJob({
+        ...job,
+        priority: job.priority + 200,
+        scheduledFor,
+        forceReschedule: true,
+        forceFullScan: true,
+      });
+      queued.push(job);
+    }
+  }
+
+  return queued;
 }
 
 async function scheduleStartupSubredditBootstrap(jobs: SubredditJobDefinition[]) {
@@ -214,6 +267,26 @@ export async function queueUserJob(
     scheduledFor,
     forceReschedule: false,
   });
+}
+
+function normaliseSubreddits(subreddits: string[]) {
+  return [
+    ...new Set(
+      subreddits
+        .map((value) => value.trim().replace(/^r\//i, "").toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function getDefaultBackfillSorts(topTimeWindows: SubredditTopTimeWindow[]): SubredditBackfillSort[] {
+  return ["new", "best", "hot", ...topTimeWindows.map((window) => `top_${window}` as const)];
+}
+
+function getBackfillSortForJob(job: SubredditJobDefinition): SubredditBackfillSort {
+  if (job.type === "subreddit_new_hourly") return "new";
+  const [, suffix = "hot"] = job.target.split(":");
+  return suffix as SubredditBackfillSort;
 }
 
 export async function claimNextJob() {

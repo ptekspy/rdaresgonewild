@@ -41,6 +41,11 @@ const SITES = [
   },
 ] as const;
 
+const SITE_SUBREDDITS = [
+  { siteKey: "rdaresgonewild", subreddit: "daresgonewild" },
+  { siteKey: "rflashingandflaunting", subreddit: "FlashingAndFlaunting" },
+] as const;
+
 async function upsertHouseAdvertiser() {
   const existing = await prisma.advertiser.findFirst({
     where: { name: "Paid Politely" },
@@ -180,6 +185,25 @@ async function main() {
   const campaign = await upsertHouseCampaign(advertiser.id);
   const creative = await upsertHouseCreative(campaign.id);
 
+  await Promise.all(
+    SITE_SUBREDDITS.map((mapping) =>
+      prisma.siteSubreddit.upsert({
+        where: {
+          siteKey_subreddit: {
+            siteKey: mapping.siteKey,
+            subreddit: mapping.subreddit,
+          },
+        },
+        update: { enabled: true },
+        create: {
+          siteKey: mapping.siteKey,
+          subreddit: mapping.subreddit,
+          enabled: true,
+        },
+      }),
+    ),
+  );
+
   const homepagePlacements = allPlacements.filter((placement) => placement.key === "homepage_top");
   if (homepagePlacements.length !== seededSites.length) {
     throw new Error("Seed placement homepage_top was not created for every site");
@@ -218,7 +242,7 @@ async function main() {
   }
 
   console.log(
-    `Seeded Paid Politely Ads: ${seededSites.length} sites, ${allPlacements.length} placements, house ads on homepage_top.`,
+    `Seeded Paid Politely Ads: ${seededSites.length} sites, ${allPlacements.length} placements, ${SITE_SUBREDDITS.length} subreddit mappings, house ads on homepage_top.`,
   );
 }
 

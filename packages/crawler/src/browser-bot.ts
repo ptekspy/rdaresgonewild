@@ -44,7 +44,7 @@ const DEFAULT_DEBUG_URL = "http://127.0.0.1:9222";
 
 export class DedicatedRedditBrowser {
   private debugUrl: string;
-  private readonly port: number;
+  private port: number;
   private readonly userDataDir: string;
   private process: ChildProcess | null = null;
   private socket: WebSocket | null = null;
@@ -62,6 +62,9 @@ export class DedicatedRedditBrowser {
 
   async start(startUrl = "https://www.reddit.com/r/daresgonewild/new/") {
     if (!(await isDebugEndpointReady(this.debugUrl))) {
+      if (!hasLinuxBrowser()) {
+        this.useDebugUrl(await selectLaunchDebugUrl(this.debugUrl));
+      }
       await this.launch(startUrl);
     }
 
@@ -73,7 +76,8 @@ export class DedicatedRedditBrowser {
   async setRedditCookies(cookieHeader: string) {
     const cookies = parseCookieHeader(cookieHeader);
     if (cookies.length === 0) {
-      throw new Error("REDDIT_COOKIE is required for the browser bot");
+      console.log("[crawler-browser] REDDIT_COOKIE is empty; using the browser profile's existing Reddit session");
+      return;
     }
 
     await this.send("Network.enable", {});
@@ -112,6 +116,20 @@ export class DedicatedRedditBrowser {
           throw new Error("Reddit browser fetch failed " + response.status + ": " + text.slice(0, 500));
         }
         return JSON.parse(text);
+      })()
+    `);
+  }
+
+  async hasRedditSession() {
+    return this.evaluate<boolean>(`
+      (async () => {
+        const response = await fetch("/api/me.json", {
+          credentials: "include",
+          headers: { "accept": "application/json" }
+        });
+        if (!response.ok) return false;
+        const body = await response.json();
+        return Boolean(body && body.name);
       })()
     `);
   }
@@ -170,6 +188,11 @@ export class DedicatedRedditBrowser {
       this.socket.close();
       this.socket = null;
     }
+
+    if (this.process?.pid) {
+      terminateProcessGroup(this.process.pid);
+      this.process = null;
+    }
   }
 
   private async launch(startUrl: string) {
@@ -177,22 +200,36 @@ export class DedicatedRedditBrowser {
 
     const executable = process.env.CRAWLER_BROWSER_EXECUTABLE ?? findLinuxBrowser();
     if (executable) {
+      terminateLinuxBrowserProfile(this.userDataDir);
+      await sleep(1_000);
+
+      const args = [
+        `--remote-debugging-port=${this.port}`,
+        `--user-data-dir=${this.userDataDir}`,
+        "--no-first-run",
+        "--disable-default-apps",
+        startUrl,
+      ];
+
+      if (shouldLaunchHeadless()) {
+        args.splice(args.length - 1, 0, "--headless=new", "--disable-gpu", "--no-sandbox");
+      }
+
       this.process = spawn(
         executable,
-        [
-          `--remote-debugging-port=${this.port}`,
-          `--user-data-dir=${this.userDataDir}`,
-          "--no-first-run",
-          "--disable-default-apps",
-          startUrl,
-        ],
-        { detached: true, stdio: "ignore" },
+        args,
+        { detached: true, stdio: "ignore", env: getBrowserProcessEnv() },
       );
       this.process.unref();
       return;
     }
 
     launchWindowsBrowser(this.port, startUrl);
+  }
+
+  private useDebugUrl(debugUrl: string) {
+    this.debugUrl = normaliseDebugUrl(debugUrl);
+    this.port = Number(new URL(this.debugUrl).port || "9222");
   }
 
   private async openPage(url: string) {
@@ -323,7 +360,14 @@ export function parseCookieHeader(cookieHeader: string) {
     .filter((cookie): cookie is { name: string; value: string } => Boolean(cookie?.name));
 }
 
+function hasLinuxBrowser() {
+  return Boolean(process.env.CRAWLER_BROWSER_EXECUTABLE ?? findLinuxBrowser());
+}
+
 function findLinuxBrowser() {
+  const playwrightChromium = findPlaywrightChromium();
+  if (playwrightChromium) return playwrightChromium;
+
   for (const executable of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"]) {
     try {
       const resolved = execFileSync("which", [executable], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -333,6 +377,86 @@ function findLinuxBrowser() {
     }
   }
   return null;
+}
+
+function findPlaywrightChromium() {
+  const cacheRoot = path.join(os.homedir(), ".cache", "ms-playwright");
+  if (!fs.existsSync(cacheRoot)) return null;
+
+  const candidates = fs
+    .readdirSync(cacheRoot)
+    .filter((entry) => entry.startsWith("chromium-"))
+    .sort()
+    .reverse()
+    .map((entry) => path.join(cacheRoot, entry, "chrome-linux", "chrome"));
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function shouldLaunchHeadless() {
+  const configured = process.env.CRAWLER_BROWSER_HEADLESS?.trim().toLowerCase();
+  if (configured) return ["1", "true", "yes", "y", "on"].includes(configured);
+  return !process.env.DISPLAY;
+}
+
+function getBrowserProcessEnv() {
+  const env = { ...process.env };
+  const localLibraryPath = findLocalBrowserLibraryPath();
+  if (!localLibraryPath) return env;
+
+  env.LD_LIBRARY_PATH = [localLibraryPath, env.LD_LIBRARY_PATH].filter(Boolean).join(":");
+  return env;
+}
+
+function findLocalBrowserLibraryPath() {
+  let current = process.cwd();
+
+  while (current !== path.dirname(current)) {
+    const candidate = path.join(current, ".crawler-libs", "extracted", "usr", "lib", "x86_64-linux-gnu");
+    if (fs.existsSync(candidate)) return candidate;
+    current = path.dirname(current);
+  }
+
+  return null;
+}
+
+function terminateLinuxBrowserProfile(userDataDir: string) {
+  let output = "";
+
+  try {
+    output = execFileSync("pgrep", ["-f", userDataDir], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return;
+  }
+
+  for (const line of output.split(/\r?\n/)) {
+    const pid = Number.parseInt(line.trim(), 10);
+    if (!Number.isFinite(pid) || pid === process.pid) continue;
+
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // The process may already be gone.
+    }
+  }
+}
+
+function terminateProcessGroup(pid: number) {
+  try {
+    process.kill(-pid, "SIGTERM");
+    return;
+  } catch {
+    // Fall back to killing the direct child.
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // The process may already be gone.
+  }
 }
 
 function launchWindowsBrowser(port: number, startUrl: string) {
@@ -414,6 +538,60 @@ async function waitForReachableDebugEndpoint(preferredDebugUrl: string) {
   }
 
   throw new Error(`Browser DevTools did not become ready at any reachable URL: ${candidates.join(", ")}`);
+}
+
+async function selectLaunchDebugUrl(preferredDebugUrl: string) {
+  if (!isWsl()) return preferredDebugUrl;
+
+  const preferred = new URL(preferredDebugUrl);
+  if (!isLocalDebugHost(preferred.hostname)) return preferredDebugUrl;
+
+  const preferredPort = Number(preferred.port || "9222");
+  const availablePort = getAvailableWindowsTcpPort(preferredPort);
+  if (availablePort === preferredPort) return preferredDebugUrl;
+
+  const nextUrl = new URL(preferredDebugUrl);
+  nextUrl.port = String(availablePort);
+  const debugUrl = normaliseDebugUrl(nextUrl.toString());
+  console.log(
+    `[crawler-browser] Windows port ${preferredPort} is not available/reachable from WSL; using ${debugUrl}`,
+  );
+  return debugUrl;
+}
+
+function getAvailableWindowsTcpPort(preferredPort: number) {
+  const usedPorts = getWindowsUsedTcpPorts();
+
+  for (let port = preferredPort; port < preferredPort + 200; port++) {
+    if (!usedPorts.has(port)) return port;
+  }
+
+  throw new Error(`Could not find an available Windows TCP port starting at ${preferredPort}`);
+}
+
+function getWindowsUsedTcpPorts() {
+  const ports = new Set<number>();
+
+  try {
+    const output = execFileSync(
+      getPowerShellExecutable(),
+      [
+        "-NoProfile",
+        "-Command",
+        "Get-NetTCPConnection -State Listen | Select-Object -ExpandProperty LocalPort",
+      ],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+
+    for (const line of output.split(/\r?\n/)) {
+      const port = Number.parseInt(line.trim(), 10);
+      if (Number.isFinite(port)) ports.add(port);
+    }
+  } catch {
+    // If Windows port inspection fails, fall back to the preferred port and let launch diagnostics report the issue.
+  }
+
+  return ports;
 }
 
 function getDebugUrlCandidates(preferredDebugUrl: string) {

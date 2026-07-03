@@ -25,7 +25,8 @@
     "backfill:browser": "node dist/bin/backfill-browser.js",
     "scan:user:browser": "node dist/bin/scan-user-browser.js",
     "worker:browser": "node dist/bin/worker-browser.js",
-    "bot:browser": "node dist/bin/crawler-bot-browser.js"
+    "bot:browser": "node dist/bin/crawler-bot-browser.js",
+    "history:browser": "node dist/bin/queue-history-backfill-browser.js"
   },
   "dependencies": {
     "@rdgw/database": "workspace:*",
