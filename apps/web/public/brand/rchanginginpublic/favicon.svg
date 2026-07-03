@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">r/Changing in Public mark</title>
+  <desc id="desc">A neon public changing-room sign with curtain panels, swap arrows, and a clothes hanger.</desc>
+  <defs>
+    <linearGradient id="bg" x1="80" y1="54" x2="430" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#66E0FF"/>
+      <stop offset="0.47" stop-color="#FFE66D"/>
+      <stop offset="1" stop-color="#FF7B54"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="90" y1="83" x2="430" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#121B34"/>
+      <stop offset="1" stop-color="#070B17"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.40  0 0 0 0 0.88  0 0 0 0 1  0 0 0 0.55 0" result="cyanGlow"/>
+      <feMerge><feMergeNode in="cyanGlow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="38" y="38" width="436" height="436" rx="118" fill="url(#bg)" opacity="0.95"/>
+  <rect x="58" y="58" width="396" height="396" rx="98" fill="url(#panel)"/>
+  <path d="M94 145c50-30 106-45 169-45 65 0 117 16 155 49" fill="none" stroke="url(#bg)" stroke-width="14" stroke-linecap="round" opacity="0.8"/>
+  <path d="M118 151h276" stroke="#66E0FF" stroke-width="11" stroke-linecap="round" opacity="0.85"/>
+  <path d="M132 154c32 39 51 82 56 132 5 54-7 99-36 136" fill="none" stroke="#66E0FF" stroke-width="24" stroke-linecap="round" opacity="0.9"/>
+  <path d="M380 154c-32 39-51 82-56 132-5 54 7 99 36 136" fill="none" stroke="#FF7B54" stroke-width="24" stroke-linecap="round" opacity="0.92"/>
+  <path d="M196 176c14 16 34 24 60 24s46-8 60-24" fill="none" stroke="#FFE66D" stroke-width="13" stroke-linecap="round"/>
+  <path d="M256 141c20 7 30 18 30 33 0 17-13 30-30 30" fill="none" stroke="#FFE66D" stroke-width="12" stroke-linecap="round"/>
+  <path d="M184 253h123" stroke="#F7FBFF" stroke-width="17" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M279 219l45 42-45 42" fill="none" stroke="#F7FBFF" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M327 337H204" stroke="#F7FBFF" stroke-width="17" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M232 303l-45 42 45 42" fill="none" stroke="#F7FBFF" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <circle cx="404" cy="112" r="13" fill="#FFE66D"/>
+  <circle cx="112" cy="403" r="10" fill="#FF7B54"/>
+</svg>

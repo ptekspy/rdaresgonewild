@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">r/Changing in Public logo</title>
+  <desc id="desc">Horizontal logo for r/Changing in Public with neon changing-room mark and wordmark.</desc>
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#66E0FF"/>
+      <stop offset="0.5" stop-color="#FFE66D"/>
+      <stop offset="1" stop-color="#FF7B54"/>
+    </linearGradient>
+    <linearGradient id="markPanel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#121B34"/>
+      <stop offset="1" stop-color="#070B17"/>
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-30%" width="140%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.40 0 0 0 0 0.88 0 0 0 0 1 0 0 0 0.35 0" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g transform="translate(42 42)">
+    <rect width="276" height="276" rx="72" fill="url(#brand)"/>
+    <rect x="14" y="14" width="248" height="248" rx="60" fill="url(#markPanel)"/>
+    <path d="M42 78h192" stroke="#66E0FF" stroke-width="9" stroke-linecap="round" opacity=".88"/>
+    <path d="M62 81c25 31 39 65 43 104 4 42-6 78-29 108" fill="none" stroke="#66E0FF" stroke-width="17" stroke-linecap="round"/>
+    <path d="M214 81c-25 31-39 65-43 104-4 42 6 78 29 108" fill="none" stroke="#FF7B54" stroke-width="17" stroke-linecap="round"/>
+    <path d="M100 104c11 12 24 18 39 18 15 0 28-6 39-18" fill="none" stroke="#FFE66D" stroke-width="9" stroke-linecap="round"/>
+    <path d="M139 80c15 5 22 13 22 24 0 13-9 22-22 22" fill="none" stroke="#FFE66D" stroke-width="8" stroke-linecap="round"/>
+    <path d="M99 151h80" stroke="#F7FBFF" stroke-width="11" stroke-linecap="round" filter="url(#softGlow)"/>
+    <path d="M160 129l31 29-31 29" fill="none" stroke="#F7FBFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)"/>
+    <path d="M185 216h-80" stroke="#F7FBFF" stroke-width="11" stroke-linecap="round" filter="url(#softGlow)"/>
+    <path d="M122 194l-31 29 31 29" fill="none" stroke="#F7FBFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)"/>
+  </g>
+  <g transform="translate(364 80)">
+    <text x="0" y="46" fill="#C8F6FF" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="850" letter-spacing="6">r/CHANGING</text>
+    <text x="0" y="132" fill="url(#brand)" font-family="Inter, Arial, sans-serif" font-size="94" font-weight="950" letter-spacing="-4">in Public</text>
+    <rect x="0" y="168" width="530" height="4" rx="2" fill="url(#brand)" opacity=".9"/>
+    <text x="0" y="214" fill="#D9E8F2" font-family="Inter, Arial, sans-serif" font-size="29" font-weight="750" letter-spacing="2">OUTFIT-RISK BOARD</text>
+  </g>
+</svg>

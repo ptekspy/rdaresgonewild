@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">r/Changing in Public social avatar</title>
+  <desc id="desc">Square social image with neon changing-room mark and r/Changing in Public text.</desc>
+  <defs>
+    <linearGradient id="bg" x1="120" y1="80" x2="900" y2="930" gradientUnits="userSpaceOnUse"><stop stop-color="#090E1C"/><stop offset="0.48" stop-color="#0B1020"/><stop offset="1" stop-color="#1E1420"/></linearGradient>
+    <radialGradient id="cyanGlow" cx="0.18" cy="0.17" r="0.8"><stop stop-color="#66E0FF" stop-opacity="0.45"/><stop offset="0.48" stop-color="#66E0FF" stop-opacity="0.08"/><stop offset="1" stop-color="#66E0FF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="coralGlow" cx="0.84" cy="0.82" r="0.75"><stop stop-color="#FF7B54" stop-opacity="0.42"/><stop offset="0.48" stop-color="#FF7B54" stop-opacity="0.09"/><stop offset="1" stop-color="#FF7B54" stop-opacity="0"/></radialGradient>
+    <linearGradient id="brand" x1="160" y1="110" x2="860" y2="900" gradientUnits="userSpaceOnUse"><stop stop-color="#66E0FF"/><stop offset="0.48" stop-color="#FFE66D"/><stop offset="1" stop-color="#FF7B54"/></linearGradient>
+    <linearGradient id="panel" x1="260" y1="140" x2="760" y2="620" gradientUnits="userSpaceOnUse"><stop stop-color="#121B34"/><stop offset="1" stop-color="#070B17"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="16" result="blur"/><feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.40 0 0 0 0 0.88 0 0 0 0 1 0 0 0 0.42 0" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#cyanGlow)"/>
+  <rect width="1024" height="1024" fill="url(#coralGlow)"/>
+  <path d="M92 180 C250 80 438 58 610 112 C770 162 884 282 942 458" fill="none" stroke="url(#brand)" stroke-width="4" opacity=".34"/>
+  <path d="M100 836 C280 936 490 958 688 874 C812 821 904 734 952 620" fill="none" stroke="url(#brand)" stroke-width="5" opacity=".26"/>
+  <g transform="translate(252 110)">
+    <rect x="0" y="0" width="520" height="520" rx="132" fill="url(#brand)"/>
+    <rect x="24" y="24" width="472" height="472" rx="112" fill="url(#panel)"/>
+    <path d="M70 145h380" stroke="#66E0FF" stroke-width="18" stroke-linecap="round" opacity=".88"/>
+    <path d="M108 152c48 58 76 124 84 198 7 79-12 149-56 206" fill="none" stroke="#66E0FF" stroke-width="34" stroke-linecap="round"/>
+    <path d="M412 152c-48 58-76 124-84 198-7 79 12 149 56 206" fill="none" stroke="#FF7B54" stroke-width="34" stroke-linecap="round"/>
+    <path d="M184 194c20 23 46 34 76 34s56-11 76-34" fill="none" stroke="#FFE66D" stroke-width="18" stroke-linecap="round"/>
+    <path d="M260 146c28 9 42 25 42 46 0 24-17 42-42 42" fill="none" stroke="#FFE66D" stroke-width="17" stroke-linecap="round"/>
+    <path d="M184 284h154" stroke="#F7FBFF" stroke-width="24" stroke-linecap="round" filter="url(#glow)"/>
+    <path d="M304 237l62 56-62 56" fill="none" stroke="#F7FBFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <path d="M344 402H190" stroke="#F7FBFF" stroke-width="24" stroke-linecap="round" filter="url(#glow)"/>
+    <path d="M220 355l-62 56 62 56" fill="none" stroke="#F7FBFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  </g>
+  <text x="512" y="725" text-anchor="middle" fill="#66E0FF" font-family="Inter, Arial, sans-serif" font-size="46" font-weight="900" letter-spacing="7">r/CHANGING</text>
+  <text x="512" y="812" text-anchor="middle" fill="url(#brand)" font-family="Inter, Arial, sans-serif" font-size="86" font-weight="950" letter-spacing="-3">in Public</text>
+  <text x="512" y="872" text-anchor="middle" fill="#B8C7DD" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="4">OUTFIT-RISK BOARD</text>
+</svg>

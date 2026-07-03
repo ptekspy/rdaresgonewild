@@ -216,7 +216,13 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     description: "Public-changing and outfit-risk posts organised by scenario, creator, and challenge.",
     themeColor: "#0b1020",
     backgroundColor: "#0b1020",
-    brand: { wordmark: "Changing in Public", tagline: "Outfit-risk board", ...sharedBoardBrand },
+    brand: {
+      logo: "/brand/rchanginginpublic/rcip-logo-horizontal.svg",
+      mark: "/brand/rchanginginpublic/rcip-mark.svg",
+      favicon: "/brand/rchanginginpublic/favicon.svg",
+      socialImage: "/brand/rchanginginpublic/social-avatar.png",
+      tagline: "Outfit-risk board",
+    },
     nav: [
       { href: "/tags/quick-change", label: "Quick Change" },
       { href: "/tags/outfit-swap", label: "Outfit Swap" },

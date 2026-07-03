@@ -670,3 +670,91 @@ select {
   --link: #ffb1c3;
   --link-hover: #6ee7f9;
 }
+
+
+/* r/Changing in Public brand polish -------------------------------------------------
+   Append this to apps/web/app/globals.css after the existing site theme blocks. */
+
+.site-rchanginginpublic {
+  --bg: #080d19;
+  --surface: #10182d;
+  --surface-strong: #16213a;
+  --border: rgba(102, 224, 255, 0.16);
+  --muted: #aebcd0;
+  --text: #f7fbff;
+  --accent: #66e0ff;
+  --accent-hover: #ff7b54;
+  --accent-orange: #ffe66d;
+  --accent-muted: rgba(102, 224, 255, 0.14);
+  --brand-gradient: linear-gradient(135deg, #66e0ff 0%, #ffe66d 46%, #ff7b54 100%);
+  --brand-gradient-soft: linear-gradient(135deg, rgba(102, 224, 255, 0.2), rgba(255, 230, 109, 0.14), rgba(255, 123, 84, 0.16));
+  --body-background:
+    radial-gradient(circle at top left, rgba(102, 224, 255, 0.19), transparent 33rem),
+    radial-gradient(circle at 80% 18%, rgba(255, 230, 109, 0.1), transparent 26rem),
+    radial-gradient(circle at bottom right, rgba(255, 123, 84, 0.16), transparent 34rem),
+    linear-gradient(180deg, #080d19 0%, #0b1020 46%, #141527 100%);
+  --selection-bg: rgba(102, 224, 255, 0.36);
+  --header-bg: rgba(8, 13, 25, 0.86);
+  --header-border: rgba(102, 224, 255, 0.17);
+  --ambient-one-bg: linear-gradient(120deg, rgba(102, 224, 255, 0.24), rgba(255, 123, 84, 0));
+  --ambient-two-bg: linear-gradient(120deg, rgba(255, 230, 109, 0.16), rgba(102, 224, 255, 0));
+  --ambient-line-bg: linear-gradient(90deg, transparent, rgba(102, 224, 255, 0.68), rgba(255, 123, 84, 0.5), transparent);
+  --card-strong-bg:
+    radial-gradient(circle at top left, rgba(102, 224, 255, 0.16), transparent 22rem),
+    radial-gradient(circle at bottom right, rgba(255, 123, 84, 0.14), transparent 20rem),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 4.25rem),
+    linear-gradient(180deg, rgba(22, 33, 58, 0.98), rgba(11, 16, 32, 0.98));
+  --glow-border-bg: linear-gradient(135deg, rgba(102, 224, 255, 0.75), rgba(255, 230, 109, 0.46), rgba(255, 123, 84, 0.56));
+  --button-shadow: 0 14px 36px rgba(102, 224, 255, 0.20), 0 8px 28px rgba(255, 123, 84, 0.16);
+  --button-shadow-hover: 0 18px 42px rgba(102, 224, 255, 0.28), 0 12px 32px rgba(255, 123, 84, 0.22);
+  --button-secondary-hover-border: rgba(102, 224, 255, 0.58);
+  --button-secondary-hover-bg: rgba(102, 224, 255, 0.09);
+  --kicker-border: rgba(102, 224, 255, 0.36);
+  --kicker-bg: rgba(102, 224, 255, 0.085);
+  --kicker-color: #c8f6ff;
+  --link: #8ce8ff;
+  --link-hover: #ffe66d;
+  --hero-accent-one-bg: linear-gradient(135deg, rgba(102, 224, 255, 0.24), rgba(255, 123, 84, 0));
+  --hero-accent-two-bg: linear-gradient(135deg, rgba(255, 230, 109, 0.16), rgba(255, 123, 84, 0.1));
+}
+
+.site-rchanginginpublic .site-logo {
+  height: clamp(2.75rem, 6vw, 3.45rem);
+  max-width: min(82vw, 25rem);
+}
+
+.site-rchanginginpublic .rdgw-card,
+.site-rchanginginpublic .rdgw-card-strong {
+  box-shadow: 0 24px 82px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(102, 224, 255, 0.07);
+}
+
+.site-rchanginginpublic .board-home-challenge .rdgw-card-strong {
+  position: relative;
+  overflow: hidden;
+}
+
+.site-rchanginginpublic .board-home-challenge .rdgw-card-strong::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("/brand/rchanginginpublic/hero-accent.svg") center / cover no-repeat,
+    url("/brand/rchanginginpublic/pattern.svg") right top / 260px 260px repeat;
+  opacity: 0.42;
+  mix-blend-mode: screen;
+}
+
+.site-rchanginginpublic .board-home-challenge .rdgw-card-strong > * {
+  position: relative;
+  z-index: 1;
+}
+
+.site-rchanginginpublic .board-home-challenge .board-tag-cloud .rdgw-button-secondary {
+  border-radius: 0.9rem 1.6rem 0.9rem 1.6rem;
+}
+
+.site-rchanginginpublic .rdgw-button-primary,
+.site-rchanginginpublic .rdgw-pill-active {
+  color: #07101c;
+}
