@@ -153,9 +153,9 @@ async function runPageCrawl(tabId, initialState) {
 
     await startStreamingPageCrawler(tabId, {
       crawlId: pipelineForThisRun.id,
-      waitMs: 900,
-      stableRounds: 10,
-      maxScrolls: 500,
+      waitMs: 1500,
+      stableRounds: 25,
+      maxScrolls: 2500,
     });
 
     await new Promise((resolve) => {
