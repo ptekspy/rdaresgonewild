@@ -15,9 +15,11 @@ export function selectTimelinePreview(input: {
 }) {
   const mediaUrls = input.mediaUrls ?? [];
   const imageUrls = input.imageUrls ?? [];
-  const redgifsPoster = mediaUrls.find((url) => /\/\/media\.redgifs\.com\/.+-poster\.(?:jpe?g|png|webp)/i.test(url));
+
+  const redgifsPoster = mediaUrls.find((url) =>
+    /\/\/media\.redgifs\.com\/.+-poster\.(?:jpe?g|png|webp)/i.test(url)
+  );
   if (redgifsPoster) return redgifsPoster;
-  if (input.thumbnailUrl && isLikelyImage(input.thumbnailUrl)) return input.thumbnailUrl;
 
   const firstImage = imageUrls.find(isLikelyImage);
   if (firstImage) return firstImage;
@@ -26,10 +28,15 @@ export function selectTimelinePreview(input: {
   if (firstMediaImage) return firstMediaImage;
 
   if (input.outboundUrl && isLikelyImage(input.outboundUrl)) return input.outboundUrl;
+  if (input.thumbnailUrl && isLikelyImage(input.thumbnailUrl)) return input.thumbnailUrl;
 
   return null;
 }
 
 function isLikelyImage(url: string) {
-  return IMAGE_PATTERN.test(url) || /\/\/(?:i|preview|external-preview)\.redd\.it\//i.test(url);
+  return (
+    IMAGE_PATTERN.test(url) ||
+    /\/\/(?:i|preview|external-preview)\.redd\.it\//i.test(url) ||
+    /\/\/(?:b|a)\.thumbs\.redditmedia\.com\//i.test(url)
+  );
 }

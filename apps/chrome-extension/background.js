@@ -531,39 +531,113 @@ function normalisePost(raw) {
 function extractUrls(raw, permalink) {
   const mediaUrls = new Set();
   const imageUrls = new Set();
-  const outboundUrl = normaliseUrl(raw.url_overridden_by_dest || raw.url);
-  const thumbnailUrl = normaliseThumbnail(raw.thumbnail);
 
-  addMedia(raw.url_overridden_by_dest || raw.url);
-  addMedia(raw.preview?.reddit_video_preview?.fallback_url);
-  addMedia(raw.media?.reddit_video?.fallback_url);
-  addMedia(raw.secure_media?.reddit_video?.fallback_url);
-  addMedia(raw.media?.oembed?.thumbnail_url, true);
-  addMedia(raw.secure_media?.oembed?.thumbnail_url, true);
+  const thumbnailUrl = normaliseMediaUrl(raw.thumbnail);
+  const outboundUrl = extractOutboundUrl(raw, permalink);
 
-  for (const image of raw.preview?.images || []) {
-    addMedia(image.source?.url, true);
-    for (const resolution of image.resolutions || []) addMedia(resolution.url, true);
-  }
-
-  for (const item of Object.values(raw.media_metadata || {})) {
-    addMedia(item?.s?.u || item?.s?.url || item?.s?.gif || item?.s?.mp4, true);
-  }
-
-  function addMedia(value, imageHint = false) {
-    const url = normaliseUrl(value);
+  const addMediaUrl = (value, options = {}) => {
+    const url = normaliseMediaUrl(value);
     if (!url) return;
-    if (url === permalink) return;
+    if (stripUrlQuery(url) === stripUrlQuery(permalink)) return;
+
     mediaUrls.add(url);
-    if (imageHint || isImageUrl(url)) imageUrls.add(url);
+
+    if (options.image || isImageUrl(url)) {
+      imageUrls.add(url);
+    }
+  };
+
+  addMediaUrl(outboundUrl, { image: isImageUrl(outboundUrl) });
+  addMediaUrl(thumbnailUrl, { image: true });
+  addPreview(raw.preview, addMediaUrl);
+  addMediaBlock(raw.media, addMediaUrl);
+  addMediaBlock(raw.secure_media, addMediaUrl);
+  addGallery(raw, addMediaUrl);
+
+  for (const crosspost of raw.crosspost_parent_list || []) {
+    const crosspostPermalink = normalisePermalink(crosspost.permalink || `/comments/${crosspost.id || ""}`);
+    const crosspostUrls = extractUrls(crosspost, crosspostPermalink);
+
+    for (const url of crosspostUrls.mediaUrls) mediaUrls.add(url);
+    for (const url of crosspostUrls.imageUrls) imageUrls.add(url);
   }
 
   return {
     mediaUrls: [...mediaUrls],
     imageUrls: [...imageUrls],
-    outboundUrl: outboundUrl && outboundUrl !== permalink ? outboundUrl : null,
+    outboundUrl,
     thumbnailUrl,
   };
+}
+
+function extractOutboundUrl(raw, permalink) {
+  const directUrl = normaliseMediaUrl(raw.url_overridden_by_dest || raw.url);
+  if (!directUrl) return null;
+
+  return stripUrlQuery(directUrl) === stripUrlQuery(permalink) ? null : directUrl;
+}
+
+function addPreview(preview, addMediaUrl) {
+  for (const image of preview?.images || []) {
+    addMediaUrl(image.source?.url, { image: true });
+
+    for (const resolution of image.resolutions || []) {
+      addMediaUrl(resolution.url, { image: true });
+    }
+
+    for (const variant of Object.values(image.variants || {})) {
+      addMediaUrl(variant.source?.url, { image: true });
+
+      for (const resolution of variant.resolutions || []) {
+        addMediaUrl(resolution.url, { image: true });
+      }
+    }
+  }
+
+  addVideo(preview?.reddit_video_preview, addMediaUrl);
+}
+
+function addMediaBlock(media, addMediaUrl) {
+  addVideo(media?.reddit_video, addMediaUrl);
+  addMediaUrl(media?.oembed?.thumbnail_url, { image: true });
+  addMediaUrl(media?.oembed?.url);
+}
+
+function addVideo(video, addMediaUrl) {
+  addMediaUrl(video?.fallback_url);
+  addMediaUrl(video?.scrubber_media_url);
+  addMediaUrl(video?.hls_url);
+  addMediaUrl(video?.dash_url);
+}
+
+function addGallery(raw, addMediaUrl) {
+  const mediaMetadata = raw.media_metadata || {};
+  const galleryItems = raw.gallery_data?.items || [];
+
+  const entries =
+    galleryItems.length > 0
+      ? galleryItems
+          .map((item) => [item.media_id, mediaMetadata[item.media_id]])
+          .filter(([, metadata]) => metadata)
+      : Object.entries(mediaMetadata);
+
+  for (const [, metadata] of entries) {
+    addMediaMetadataImage(metadata?.s, addMediaUrl);
+
+    for (const preview of metadata?.p || []) {
+      addMediaMetadataImage(preview, addMediaUrl);
+    }
+
+    for (const original of metadata?.o || []) {
+      addMediaMetadataImage(original, addMediaUrl);
+    }
+  }
+}
+
+function addMediaMetadataImage(image, addMediaUrl) {
+  addMediaUrl(image?.u || image?.url, { image: true });
+  addMediaUrl(image?.gif, { image: true });
+  addMediaUrl(image?.mp4);
 }
 
 function inferSubreddit(permalink) {
@@ -575,20 +649,45 @@ function normalisePermalink(value) {
   return `https://www.reddit.com${value.startsWith("/") ? value : `/${value}`}`;
 }
 
-function normaliseUrl(value) {
+function normaliseMediaUrl(value) {
   if (typeof value !== "string" || !value.trim()) return null;
-  const decoded = value.replaceAll("&amp;", "&");
-  return /^https?:\/\//i.test(decoded) ? decoded : null;
+
+  const decoded = decodeHtmlEntities(value.trim());
+  const ignored = new Set(["default", "self", "nsfw", "spoiler", "image", ""]);
+
+  if (ignored.has(decoded.toLowerCase())) return null;
+  if (!/^https?:\/\//i.test(decoded)) return null;
+
+  return decoded;
 }
 
-function normaliseThumbnail(value) {
-  const ignored = new Set(["default", "self", "nsfw", "spoiler", "image", ""]);
-  if (typeof value !== "string" || ignored.has(value)) return null;
-  return normaliseUrl(value);
+function decodeHtmlEntities(value) {
+  return value
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&#x27;", "'");
 }
 
 function isImageUrl(value) {
-  return /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value) || /\/\/(?:i|preview)\.redd\.it\//i.test(value);
+  if (!value) return false;
+
+  return (
+    /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value) ||
+    /\/\/(?:i|preview|external-preview)\.redd\.it\//i.test(value) ||
+    /\/\/(?:b|a)\.thumbs\.redditmedia\.com\//i.test(value)
+  );
+}
+
+function stripUrlQuery(value) {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return String(value).replace(/[?#].*$/, "").replace(/\/$/, "");
+  }
 }
 
 async function postJson(url, body) {

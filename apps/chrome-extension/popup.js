@@ -42,7 +42,7 @@ async function startSync() {
   const apiBase = normaliseApiBase(apiBaseInput.value);
   const tab = activeTab || (await getActiveTab());
 
-  if (!tab?.id || !/^https:\/\/(?:www\.|old\.|new\.)?reddit\.com\//i.test(tab.url || "")) {
+  if (!tab?.id || !isRedditTabUrl(tab.url || "")) {
     message.textContent = "Open the Reddit page you want to crawl, then try again.";
     return;
   }
@@ -78,4 +78,13 @@ async function getActiveTab() {
 
 function normaliseApiBase(value) {
   return (value || DEFAULT_API_BASE).replace(/\/+$/, "");
+}
+
+function isRedditTabUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && /(^|\.)reddit\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
 }
