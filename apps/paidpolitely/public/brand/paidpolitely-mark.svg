@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PaidPolitely logo mark">
+  <defs>
+    <linearGradient id="g" x1="116" y1="62" x2="397" y2="444" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF4F9A"/>
+      <stop offset="0.52" stop-color="#FF7A70"/>
+      <stop offset="1" stop-color="#FFB35B"/>
+    </linearGradient>
+    <linearGradient id="v" x1="84" y1="109" x2="431" y2="431" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9A6CFF" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#FF4F9A" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#FF4F9A" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect x="36" y="36" width="440" height="440" rx="132" fill="#120A19"/>
+  <rect x="36" y="36" width="440" height="440" rx="132" fill="url(#v)"/>
+  <path filter="url(#shadow)" d="M260.2 87C190.8 87 140 132.4 140 196.2v204.6h66.5v-93.2h57.3c68.5 0 116.2-43.1 116.2-109.6C380 132.4 330.4 87 260.2 87Zm-1.9 161.6h-51.8v-102h51.8c33.4 0 54.2 19.2 54.2 51.3 0 31.7-20.8 50.7-54.2 50.7Z" fill="url(#g)"/>
+  <path d="M323 311c24.8 0 44.9 20.1 44.9 44.9S347.8 401 323 401s-44.9-20.1-44.9-45.1S298.2 311 323 311Z" fill="url(#g)"/>
+  <path d="M184 401c-14.2 0-25.6-11.4-25.6-25.5s11.4-25.5 25.6-25.5 25.6 11.4 25.6 25.5S198.2 401 184 401Z" fill="#FFF7FB" fill-opacity="0.92"/>
+</svg>

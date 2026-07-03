@@ -1,0 +1,13 @@
+<svg width="1320" height="360" viewBox="0 0 1320 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PaidPolitely">
+  <defs>
+    <linearGradient id="g" x1="58" y1="35" x2="252" y2="304" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF4F9A"/>
+      <stop offset="1" stop-color="#FFB35B"/>
+    </linearGradient>
+  </defs>
+  <rect x="28" y="28" width="304" height="304" rx="90" fill="#120A19"/>
+  <path d="M183 63c-50 0-86.7 32.7-86.7 78.7V289h47.9v-67.1h41.3c49.4 0 83.8-31 83.8-79 0-47.2-35.8-79.9-86.3-79.9Zm-1.4 116.5h-37.4v-73.5h37.4c24.1 0 39.1 13.8 39.1 37 0 22.9-15 36.5-39.1 36.5Z" fill="url(#g)"/>
+  <circle cx="240" cy="257" r="31" fill="url(#g)"/>
+  <text x="388" y="180" fill="#FFF8FB" font-family="Inter, Arial, sans-serif" font-size="106" font-weight="900" letter-spacing="-5">PaidPolitely</text>
+  <text x="394" y="240" fill="#FFC2DA" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="7">DIRECT ADULT DISPLAY NETWORK</text>
+</svg>

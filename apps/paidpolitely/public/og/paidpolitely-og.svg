@@ -1,0 +1,26 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0710"/>
+      <stop offset="0.5" stop-color="#1A0D24"/>
+      <stop offset="1" stop-color="#08060C"/>
+    </linearGradient>
+    <radialGradient id="pink" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(178 99) rotate(55) scale(444 398)">
+      <stop stop-color="#FF4F9A" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FF4F9A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="100" y1="98" x2="286" y2="356" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF4F9A"/>
+      <stop offset="1" stop-color="#FFB35B"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#pink)"/>
+  <circle cx="1010" cy="116" r="236" fill="#9A6CFF" opacity="0.18"/>
+  <rect x="72" y="72" width="244" height="244" rx="76" fill="#120A19"/>
+  <path d="M196 100c-40 0-69.3 26.2-69.3 63v117.9h38.3v-53.6h33c39.5 0 67.1-24.8 67.1-63.2 0-37.8-28.6-64.1-69.1-64.1Zm-1.1 93.2h-29.9v-58.8h29.9c19.3 0 31.3 11 31.3 29.6 0 18.3-12 29.2-31.3 29.2Z" fill="url(#mark)"/>
+  <circle cx="242" cy="255" r="24" fill="url(#mark)"/>
+  <text x="72" y="414" fill="#FFF8FB" font-family="Inter, Arial, sans-serif" font-size="82" font-weight="900" letter-spacing="-4">PaidPolitely</text>
+  <text x="76" y="476" fill="#FFC2DA" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="5">DISPLAY ADS + SUBREDDIT COMPANION SITES</text>
+  <text x="76" y="538" fill="#C7B8C8" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="500">Buy focused adult display placements or bring your subreddit into the network.</text>
+</svg>
