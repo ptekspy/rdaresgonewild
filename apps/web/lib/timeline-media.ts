@@ -23,11 +23,7 @@ export function selectTimelinePreview(input: {
   const redgifsPoster = [...mediaUrls, ...imageUrls].find((url) => REDGIFS_POSTER_PATTERN.test(url));
   if (redgifsPoster) return redgifsPoster;
 
-  const candidates = unique([
-    ...imageUrls,
-    ...mediaUrls,
-    input.outboundUrl ?? "",
-  ])
+  const candidates = unique([...imageUrls, ...mediaUrls, input.outboundUrl ?? ""])
     .filter(isLikelyImage)
     .filter((url) => !isFragileThumbnail(url))
     .sort((a, b) => scorePreviewUrl(b) - scorePreviewUrl(a));

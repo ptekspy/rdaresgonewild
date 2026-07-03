@@ -1,5 +1,19 @@
 const DEFAULT_API_BASE = "https://api.paidpolitely.com";
 
+const DEFAULT_STATE = {
+  status: "idle",
+  mode: "page",
+  username: "",
+  sessionId: "",
+  uploadToken: "",
+  apiBase: DEFAULT_API_BASE,
+  pageUrl: "",
+  pagesScanned: 0,
+  postsSynced: 0,
+  message: "Ready.",
+  tabId: null,
+};
+
 const apiBaseInput = document.querySelector("#apiBase");
 const startButton = document.querySelector("#start");
 const stopButton = document.querySelector("#stop");
@@ -11,14 +25,22 @@ const pageUrl = document.querySelector("#pageUrl");
 
 let activeTab = null;
 
-init();
+init().catch((error) => {
+  renderState({
+    ...DEFAULT_STATE,
+    status: "error",
+    message: String(error?.message || error),
+  });
+});
 
 async function init() {
   activeTab = await getActiveTab();
 
   const [{ apiBase }, state] = await Promise.all([
     chrome.storage.local.get({ apiBase: DEFAULT_API_BASE }),
-    activeTab?.id ? sendMessage({ type: "GET_STATE", tabId: activeTab.id }) : DEFAULT_STATE,
+    activeTab?.id
+      ? sendMessage({ type: "GET_STATE", tabId: activeTab.id })
+      : Promise.resolve({ ...DEFAULT_STATE, message: "Open a Reddit page to crawl it." }),
   ]);
 
   apiBaseInput.value = apiBase;
@@ -44,39 +66,74 @@ async function startSync() {
   const tab = activeTab || (await getActiveTab());
 
   if (!tab?.id || !isRedditTabUrl(tab.url || "")) {
-    message.textContent = "Open the Reddit page you want to crawl, then try again.";
+    renderState({
+      ...DEFAULT_STATE,
+      status: "error",
+      message: "Open the Reddit page you want to crawl, then try again.",
+    });
     return;
   }
 
-  await chrome.storage.local.set({ apiBase });
-  const state = await sendMessage({
-    type: "START_PAGE_CRAWL",
-    tabId: tab.id,
-    pageUrl: tab.url,
-    apiBase,
-  });
-  renderState(state);
+  try {
+    startButton.disabled = true;
+    message.textContent = "Starting crawl...";
+
+    await chrome.storage.local.set({ apiBase });
+
+    const state = await sendMessage({
+      type: "START_PAGE_CRAWL",
+      tabId: tab.id,
+      pageUrl: tab.url,
+      apiBase,
+    });
+
+    renderState(state);
+  } catch (error) {
+    renderState({
+      ...DEFAULT_STATE,
+      tabId: tab.id,
+      status: "error",
+      message: String(error?.message || error),
+    });
+  }
 }
 
 async function stopSync() {
   const tab = activeTab || (await getActiveTab());
 
   if (!tab?.id) {
-    message.textContent = "No active tab found.";
+    renderState({
+      ...DEFAULT_STATE,
+      status: "error",
+      message: "No active tab found.",
+    });
     return;
   }
 
-  const state = await sendMessage({ type: "STOP_SYNC", tabId: tab.id });
-  renderState(state);
+  try {
+    const state = await sendMessage({ type: "STOP_SYNC", tabId: tab.id });
+    renderState(state);
+  } catch (error) {
+    renderState({
+      ...DEFAULT_STATE,
+      tabId: tab.id,
+      status: "error",
+      message: String(error?.message || error),
+    });
+  }
 }
 
 function renderState(state) {
-  const status = state?.status || "idle";
-  pages.textContent = String(state?.pagesScanned || 0);
-  posts.textContent = String(state?.postsSynced || 0);
-  message.textContent = state?.message || "Ready.";
+  const next = state || DEFAULT_STATE;
+  const status = next.status || "idle";
+
+  pages.textContent = String(next.pagesScanned || 0);
+  posts.textContent = String(next.postsSynced || 0);
+  message.textContent = next.message || "Ready.";
+
   startButton.disabled = status === "running";
   stopButton.disabled = status !== "running";
+
   statusDot.className = `dot ${status === "running" ? "running" : status === "error" ? "error" : ""}`;
 }
 

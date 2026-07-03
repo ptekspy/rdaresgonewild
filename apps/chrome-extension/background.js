@@ -1,6 +1,6 @@
 const STORAGE_KEYS = {
   installId: "installId",
-  state: "syncState",
+  statePrefix: "syncState:",
 };
 
 const DEFAULT_STATE = {
@@ -14,15 +14,15 @@ const DEFAULT_STATE = {
   pagesScanned: 0,
   postsSynced: 0,
   message: "Ready.",
+  tabId: null,
 };
 
 const FETCH_CONCURRENCY = 4;
 const UPLOAD_BATCH_SIZE = 25;
 const UPLOAD_FLUSH_MS = 2500;
 
-let running = false;
-let activeCrawlTabId = null;
-let pipeline = null;
+const pipelinesByTabId = new Map();
+const pipelinesByCrawlId = new Map();
 
 chrome.runtime.onInstalled.addListener(async () => {
   await ensureInstallId();
@@ -34,49 +34,79 @@ chrome.runtime.onMessage.addListener((payload, _sender, sendResponse) => {
 });
 
 async function handleMessage(payload) {
+  const tabId = Number(payload?.tabId);
+
   if (payload?.type === "GET_STATE") {
-    return getState();
+    return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
   }
 
   if (payload?.type === "START_PAGE_CRAWL") {
-    const tabId = Number(payload.tabId);
     const pageUrl = String(payload.pageUrl || "");
     const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
 
     if (!Number.isInteger(tabId) || !isRedditUrl(pageUrl)) {
-      return setState({ ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." });
+      return Number.isInteger(tabId)
+        ? setState(tabId, { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." })
+        : { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." };
     }
 
-    if (running) {
-      return setState({ status: "error", message: "A crawl is already running. Stop it before starting another." });
+    const existingPipeline = pipelinesByTabId.get(tabId);
+    if (existingPipeline && !existingPipeline.finalising) {
+      return setState(tabId, {
+        status: "error",
+        message: "This tab already has a crawl running. Stop it before starting another.",
+      });
     }
 
-    activeCrawlTabId = tabId;
-
-    const state = await setState({
+    const state = await setState(tabId, {
       ...DEFAULT_STATE,
+      tabId,
       status: "running",
       mode: "page",
       apiBase,
       pageUrl,
       username: inferUsernameFromUrl(pageUrl) || "",
+      pagesScanned: 0,
+      postsSynced: 0,
       message: "Starting concurrent scroll, parse, and upload...",
     });
 
     runPageCrawl(tabId, state).catch(async (error) => {
-      running = false;
-      activeCrawlTabId = null;
-      pipeline = null;
-      await setState({ status: "error", message: String(error?.message || error) });
+      const activePipeline = pipelinesByTabId.get(tabId);
+      if (activePipeline) {
+        activePipeline.stopRequested = true;
+        activePipeline.scrollComplete = true;
+      }
+
+      await setState(tabId, {
+        status: "error",
+        message: String(error?.message || error),
+      });
     });
 
     return state;
   }
 
   if (payload?.type === "STOP_SYNC") {
-    if (pipeline) pipeline.stopRequested = true;
-    await requestPageCrawlerStop();
-    return setState({ status: "running", message: "Stopping scroll and finishing queued uploads..." });
+    if (!Number.isInteger(tabId)) {
+      return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
+    }
+
+    const pipeline = pipelinesByTabId.get(tabId);
+    if (!pipeline) {
+      return setState(tabId, {
+        status: "idle",
+        message: "No crawl is running for this tab.",
+      });
+    }
+
+    pipeline.stopRequested = true;
+    await requestPageCrawlerStop(tabId);
+
+    return setState(tabId, {
+      status: "running",
+      message: "Stopping scroll and finishing queued uploads...",
+    });
   }
 
   if (payload?.type === "PAGE_CRAWL_LINKS") {
@@ -94,11 +124,11 @@ async function handleMessage(payload) {
     return { ok: true };
   }
 
-  return getState();
+  return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
 }
 
 async function runPageCrawl(tabId, initialState) {
-  running = true;
+  let pipelineForThisRun = null;
 
   try {
     const installId = await ensureInstallId();
@@ -111,23 +141,33 @@ async function runPageCrawl(tabId, initialState) {
       clientVersion: chrome.runtime.getManifest().version,
     });
 
-    const state = await setState({
+    const state = await setState(tabId, {
       sessionId: sessionResponse.session.id,
       uploadToken: sessionResponse.uploadToken,
       message: "Scrolling, parsing, and uploading concurrently...",
     });
 
-    pipeline = createPipeline(tabId, state);
-    await startStreamingPageCrawler(tabId, { crawlId: pipeline.id, waitMs: 900, stableRounds: 10, maxScrolls: 500 });
+    pipelineForThisRun = createPipeline(tabId, state);
+    pipelinesByTabId.set(tabId, pipelineForThisRun);
+    pipelinesByCrawlId.set(pipelineForThisRun.id, pipelineForThisRun);
+
+    await startStreamingPageCrawler(tabId, {
+      crawlId: pipelineForThisRun.id,
+      waitMs: 900,
+      stableRounds: 10,
+      maxScrolls: 500,
+    });
 
     await new Promise((resolve) => {
-      pipeline.resolveComplete = resolve;
+      pipelineForThisRun.resolveComplete = resolve;
     });
   } finally {
-    if (pipeline?.flushTimer) clearTimeout(pipeline.flushTimer);
-    running = false;
-    activeCrawlTabId = null;
-    pipeline = null;
+    if (pipelineForThisRun?.flushTimer) clearTimeout(pipelineForThisRun.flushTimer);
+
+    if (pipelineForThisRun) {
+      pipelinesByCrawlId.delete(pipelineForThisRun.id);
+      if (pipelinesByTabId.get(tabId) === pipelineForThisRun) pipelinesByTabId.delete(tabId);
+    }
   }
 }
 
@@ -141,7 +181,6 @@ function createPipeline(tabId, state) {
     postBatch: [],
     fetchInFlight: 0,
     uploadInFlight: false,
-    uploadPending: false,
     scrollComplete: false,
     finalising: false,
     stopRequested: false,
@@ -152,8 +191,22 @@ function createPipeline(tabId, state) {
   };
 }
 
+function getPipelineByCrawlId(crawlId) {
+  if (typeof crawlId !== "string") return null;
+  return pipelinesByCrawlId.get(crawlId) || null;
+}
+
+function isActivePipeline(pipeline) {
+  return Boolean(
+    pipeline &&
+      pipelinesByCrawlId.get(pipeline.id) === pipeline &&
+      pipelinesByTabId.get(pipeline.tabId) === pipeline
+  );
+}
+
 async function handlePageLinks(payload) {
-  if (!pipeline || payload.crawlId !== pipeline.id || pipeline.finalising) return;
+  const pipeline = getPipelineByCrawlId(payload.crawlId);
+  if (!isActivePipeline(pipeline) || pipeline.finalising) return;
 
   const links = Array.isArray(payload.links) ? payload.links.filter((link) => typeof link === "string") : [];
   const newLinks = [];
@@ -167,134 +220,130 @@ async function handlePageLinks(payload) {
 
   pipeline.latestScrolls = Number(payload.scrolls) || pipeline.latestScrolls;
 
-  if (newLinks.length > 0) {
-    pipeline.state = await setState({
-      pagesScanned: pipeline.latestScrolls,
-      message: `Scrolling... found ${pipeline.seenLinks.size} links, queued ${pipeline.linkQueue.length}.`,
-    });
-  } else {
-    pipeline.state = await setState({
-      pagesScanned: pipeline.latestScrolls,
-      message: `Scrolling... parsed ${pipeline.seenLinks.size} links, uploading in parallel.`,
-    });
-  }
+  pipeline.state = await setState(pipeline.tabId, {
+    pagesScanned: pipeline.latestScrolls,
+    message:
+      newLinks.length > 0
+        ? `Scrolling... found ${pipeline.seenLinks.size} links, queued ${pipeline.linkQueue.length}.`
+        : `Scrolling... parsed ${pipeline.seenLinks.size} links, uploading in parallel.`,
+  });
 
-  pumpLinkQueue();
-  maybeFinalizePipeline();
+  pumpLinkQueue(pipeline);
+  maybeFinalizePipeline(pipeline);
 }
 
 async function handlePageDone(payload) {
-  if (!pipeline || payload.crawlId !== pipeline.id) return;
+  const pipeline = getPipelineByCrawlId(payload.crawlId);
+  if (!isActivePipeline(pipeline)) return;
 
   pipeline.scrollComplete = true;
   pipeline.latestScrolls = Number(payload.scrolls) || pipeline.latestScrolls;
-  pipeline.state = await setState({
+  pipeline.state = await setState(pipeline.tabId, {
     pagesScanned: pipeline.latestScrolls,
     message: "Reached the end of lazy loading. Finishing queued uploads...",
   });
 
-  pumpLinkQueue();
-  maybeFlushUpload();
-  maybeFinalizePipeline();
+  pumpLinkQueue(pipeline);
+  maybeFlushUpload(pipeline);
+  maybeFinalizePipeline(pipeline);
 }
 
 async function handlePageError(payload) {
-  if (!pipeline || payload.crawlId !== pipeline.id) return;
+  const pipeline = getPipelineByCrawlId(payload.crawlId);
+  if (!isActivePipeline(pipeline)) return;
 
   pipeline.scrollComplete = true;
   pipeline.stopRequested = true;
-  pipeline.state = await setState({
+  pipeline.state = await setState(pipeline.tabId, {
+    status: "error",
     message: `Page crawler stopped: ${String(payload.error || "unknown error")}`,
   });
 
-  maybeFinalizePipeline();
+  maybeFinalizePipeline(pipeline);
 }
 
-function pumpLinkQueue() {
-  if (!pipeline) return;
+function pumpLinkQueue(pipeline) {
+  if (!isActivePipeline(pipeline)) return;
 
-  while (
-    pipeline.fetchInFlight < FETCH_CONCURRENCY &&
-    pipeline.linkQueue.length > 0 &&
-    !pipeline.stopRequested
-  ) {
+  while (pipeline.fetchInFlight < FETCH_CONCURRENCY && pipeline.linkQueue.length > 0 && !pipeline.stopRequested) {
     const link = pipeline.linkQueue.shift();
     pipeline.fetchInFlight++;
 
-    fetchAndQueuePost(link)
+    fetchAndQueuePost(pipeline, link)
       .catch(() => {
-        if (pipeline) pipeline.skipped++;
+        if (isActivePipeline(pipeline)) pipeline.skipped++;
       })
       .finally(() => {
-        if (!pipeline) return;
+        if (!isActivePipeline(pipeline)) return;
         pipeline.fetchInFlight--;
-        pumpLinkQueue();
-        maybeFlushUpload();
-        maybeFinalizePipeline();
+        pumpLinkQueue(pipeline);
+        maybeFlushUpload(pipeline);
+        maybeFinalizePipeline(pipeline);
       });
   }
 }
 
-async function fetchAndQueuePost(link) {
-  if (!pipeline) return;
+async function fetchAndQueuePost(pipeline, link) {
+  if (!isActivePipeline(pipeline) || pipeline.stopRequested) return;
 
   const rawPost = await fetchPostFromPermalink(link);
   const normalised = normalisePost(rawPost);
-  if (!normalised || !pipeline) return;
+  if (!normalised || !isActivePipeline(pipeline)) return;
 
   pipeline.postBatch.push(normalised);
 
-  if (pipeline.postBatch.length >= UPLOAD_BATCH_SIZE) {
-    maybeFlushUpload();
-  } else {
-    scheduleUploadFlush();
-  }
+  if (pipeline.postBatch.length >= UPLOAD_BATCH_SIZE) maybeFlushUpload(pipeline);
+  else scheduleUploadFlush(pipeline);
 }
 
-function scheduleUploadFlush() {
-  if (!pipeline || pipeline.flushTimer || pipeline.postBatch.length === 0) return;
+function scheduleUploadFlush(pipeline) {
+  if (!isActivePipeline(pipeline) || pipeline.flushTimer || pipeline.postBatch.length === 0) return;
 
   pipeline.flushTimer = setTimeout(() => {
-    if (!pipeline) return;
+    if (!isActivePipeline(pipeline)) return;
     pipeline.flushTimer = null;
-    maybeFlushUpload();
+    maybeFlushUpload(pipeline);
   }, UPLOAD_FLUSH_MS);
 }
 
-function maybeFlushUpload() {
-  if (!pipeline || pipeline.uploadInFlight || pipeline.postBatch.length === 0) return;
+function maybeFlushUpload(pipeline) {
+  if (!isActivePipeline(pipeline) || pipeline.uploadInFlight || pipeline.postBatch.length === 0) return;
 
   const posts = pipeline.postBatch.splice(0, UPLOAD_BATCH_SIZE);
   pipeline.uploadInFlight = true;
 
   uploadBatch(pipeline.state, posts, false)
     .then(async (upload) => {
-      if (!pipeline) return;
-      pipeline.state = await setState({
+      if (!isActivePipeline(pipeline)) return;
+      pipeline.state = await setState(pipeline.tabId, {
         postsSynced: upload.session.postsReceived,
         message: `Scrolling, parsing, uploading... synced ${upload.session.postsReceived} posts.`,
       });
     })
     .catch(async (error) => {
-      if (!pipeline) return;
+      if (!isActivePipeline(pipeline)) return;
       pipeline.stopRequested = true;
       pipeline.scrollComplete = true;
-      await setState({ status: "error", message: String(error?.message || error) });
+      pipeline.state = await setState(pipeline.tabId, {
+        status: "error",
+        message: String(error?.message || error),
+      });
     })
     .finally(() => {
-      if (!pipeline) return;
+      if (!isActivePipeline(pipeline)) return;
       pipeline.uploadInFlight = false;
-      if (pipeline.postBatch.length > 0) maybeFlushUpload();
-      maybeFinalizePipeline();
+      if (pipeline.postBatch.length > 0) maybeFlushUpload(pipeline);
+      maybeFinalizePipeline(pipeline);
     });
 }
 
-function maybeFinalizePipeline() {
-  if (!pipeline || pipeline.finalising) return;
+function maybeFinalizePipeline(pipeline) {
+  if (!isActivePipeline(pipeline) || pipeline.finalising) return;
   if (!pipeline.scrollComplete && !pipeline.stopRequested) return;
   if (pipeline.linkQueue.length > 0 || pipeline.fetchInFlight > 0 || pipeline.uploadInFlight) return;
 
   pipeline.finalising = true;
+
   if (pipeline.flushTimer) {
     clearTimeout(pipeline.flushTimer);
     pipeline.flushTimer = null;
@@ -304,21 +353,25 @@ function maybeFinalizePipeline() {
 
   uploadBatch(pipeline.state, posts, true)
     .then(async (upload) => {
-      if (!pipeline) return;
-      await setState({
+      if (!isActivePipeline(pipeline)) return;
+      await setState(pipeline.tabId, {
         status: pipeline.stopRequested ? "idle" : "completed",
         pagesScanned: pipeline.latestScrolls,
         postsSynced: upload.session.postsReceived,
         message: pipeline.stopRequested
           ? `Stopped. Synced ${upload.session.postsReceived} posts.`
-          : `Completed. Synced ${upload.session.postsReceived} posts from ${pipeline.seenLinks.size} links${pipeline.skipped ? `, skipped ${pipeline.skipped}` : ""}.`,
+          : `Completed. Synced ${upload.session.postsReceived} posts from ${pipeline.seenLinks.size} links${
+              pipeline.skipped ? `, skipped ${pipeline.skipped}` : ""
+            }.`,
       });
     })
     .catch(async (error) => {
-      await setState({ status: "error", message: String(error?.message || error) });
+      if (isActivePipeline(pipeline)) {
+        await setState(pipeline.tabId, { status: "error", message: String(error?.message || error) });
+      }
     })
     .finally(() => {
-      pipeline?.resolveComplete();
+      pipeline.resolveComplete();
     });
 }
 
@@ -330,12 +383,10 @@ async function startStreamingPageCrawler(tabId, options) {
   });
 }
 
-async function requestPageCrawlerStop() {
-  if (!activeCrawlTabId) return;
-
+async function requestPageCrawlerStop(tabId) {
   await chrome.scripting
     .executeScript({
-      target: { tabId: activeCrawlTabId },
+      target: { tabId },
       func: () => {
         if (window.__paidPolitelyCrawler) window.__paidPolitelyCrawler.stopped = true;
       },
@@ -354,9 +405,7 @@ function startConcurrentRedditCrawler(options) {
     return;
   }
 
-  if (window.__paidPolitelyCrawler) {
-    window.__paidPolitelyCrawler.stopped = true;
-  }
+  if (window.__paidPolitelyCrawler) window.__paidPolitelyCrawler.stopped = true;
 
   const crawler = {
     crawlId,
@@ -382,6 +431,7 @@ function startConcurrentRedditCrawler(options) {
       const href = anchor.href || anchor.getAttribute("href") || "";
       const permalink = normalisePostHref(href);
       if (!permalink || crawler.seen.has(permalink)) continue;
+
       crawler.seen.add(permalink);
       links.push(permalink);
     }
@@ -412,6 +462,7 @@ function startConcurrentRedditCrawler(options) {
       const subredditIndex = parts.findIndex((part) => part.toLowerCase() === "r");
       const subreddit = subredditIndex >= 0 ? `/${parts[subredditIndex]}/${parts[subredditIndex + 1]}` : "";
       const slug = parts[commentsIndex + 2] ? `/${parts[commentsIndex + 2]}` : "";
+
       return `https://www.reddit.com${subreddit}/comments/${match[1]}${slug}/`;
     } catch {
       return null;
@@ -444,21 +495,11 @@ function startConcurrentRedditCrawler(options) {
         crawler.stableRounds = atBottom && noNewHeight && noNewLinks ? crawler.stableRounds + 1 : 0;
         crawler.previousHeight = afterHeight;
 
-        send({
-          type: "PAGE_CRAWL_LINKS",
-          links: [],
-          scrolls: crawler.scrolls,
-          totalLinks: crawler.seen.size,
-        });
+        send({ type: "PAGE_CRAWL_LINKS", links: [], scrolls: crawler.scrolls, totalLinks: crawler.seen.size });
       }
 
       collectNewLinks();
-      send({
-        type: "PAGE_CRAWL_DONE",
-        scrolls: crawler.scrolls,
-        totalLinks: crawler.seen.size,
-        stopped: crawler.stopped,
-      });
+      send({ type: "PAGE_CRAWL_DONE", scrolls: crawler.scrolls, totalLinks: crawler.seen.size, stopped: crawler.stopped });
     } catch (error) {
       send({ type: "PAGE_CRAWL_ERROR", error: String(error?.message || error) });
     }
@@ -469,20 +510,13 @@ function startConcurrentRedditCrawler(options) {
 
 async function fetchPostFromPermalink(permalink) {
   const url = `${permalink.replace(/\/$/, "")}.json?raw_json=1`;
-  const response = await fetch(url, {
-    credentials: "include",
-    headers: { accept: "application/json" },
-  });
+  const response = await fetch(url, { credentials: "include", headers: { accept: "application/json" } });
 
-  if (!response.ok) {
-    throw new Error(`Reddit returned ${response.status} for ${permalink}`);
-  }
+  if (!response.ok) throw new Error(`Reddit returned ${response.status} for ${permalink}`);
 
   const listing = await response.json();
   const raw = listing?.[0]?.data?.children?.[0]?.data;
-  if (!raw?.id) {
-    throw new Error(`Could not parse Reddit post JSON for ${permalink}`);
-  }
+  if (!raw?.id) throw new Error(`Could not parse Reddit post JSON for ${permalink}`);
 
   return raw;
 }
@@ -542,9 +576,7 @@ function extractUrls(raw, permalink) {
 
     mediaUrls.add(url);
 
-    if (options.image || isImageUrl(url)) {
-      imageUrls.add(url);
-    }
+    if (options.image || isImageUrl(url)) imageUrls.add(url);
   };
 
   addMediaUrl(outboundUrl, { image: isImageUrl(outboundUrl) });
@@ -561,18 +593,12 @@ function extractUrls(raw, permalink) {
     for (const url of crosspostUrls.imageUrls) imageUrls.add(url);
   }
 
-  return {
-    mediaUrls: [...mediaUrls],
-    imageUrls: [...imageUrls],
-    outboundUrl,
-    thumbnailUrl,
-  };
+  return { mediaUrls: [...mediaUrls], imageUrls: [...imageUrls], outboundUrl, thumbnailUrl };
 }
 
 function extractOutboundUrl(raw, permalink) {
   const directUrl = normaliseMediaUrl(raw.url_overridden_by_dest || raw.url);
   if (!directUrl) return null;
-
   return stripUrlQuery(directUrl) === stripUrlQuery(permalink) ? null : directUrl;
 }
 
@@ -580,16 +606,11 @@ function addPreview(preview, addMediaUrl) {
   for (const image of preview?.images || []) {
     addMediaUrl(image.source?.url, { image: true });
 
-    for (const resolution of image.resolutions || []) {
-      addMediaUrl(resolution.url, { image: true });
-    }
+    for (const resolution of image.resolutions || []) addMediaUrl(resolution.url, { image: true });
 
     for (const variant of Object.values(image.variants || {})) {
       addMediaUrl(variant.source?.url, { image: true });
-
-      for (const resolution of variant.resolutions || []) {
-        addMediaUrl(resolution.url, { image: true });
-      }
+      for (const resolution of variant.resolutions || []) addMediaUrl(resolution.url, { image: true });
     }
   }
 
@@ -598,7 +619,7 @@ function addPreview(preview, addMediaUrl) {
 
 function addMediaBlock(media, addMediaUrl) {
   addVideo(media?.reddit_video, addMediaUrl);
-  addMediaUrl(media?.oembed?.thumbnail_url, { image: true });
+  addMediaUrl(media?.oembed?.thumbnail_url);
   addMediaUrl(media?.oembed?.url);
 }
 
@@ -612,24 +633,15 @@ function addVideo(video, addMediaUrl) {
 function addGallery(raw, addMediaUrl) {
   const mediaMetadata = raw.media_metadata || {};
   const galleryItems = raw.gallery_data?.items || [];
-
   const entries =
     galleryItems.length > 0
-      ? galleryItems
-          .map((item) => [item.media_id, mediaMetadata[item.media_id]])
-          .filter(([, metadata]) => metadata)
+      ? galleryItems.map((item) => [item.media_id, mediaMetadata[item.media_id]]).filter(([, metadata]) => metadata)
       : Object.entries(mediaMetadata);
 
   for (const [, metadata] of entries) {
     addMediaMetadataImage(metadata?.s, addMediaUrl);
-
-    for (const preview of metadata?.p || []) {
-      addMediaMetadataImage(preview, addMediaUrl);
-    }
-
-    for (const original of metadata?.o || []) {
-      addMediaMetadataImage(original, addMediaUrl);
-    }
+    for (const preview of metadata?.p || []) addMediaMetadataImage(preview, addMediaUrl);
+    for (const original of metadata?.o || []) addMediaMetadataImage(original, addMediaUrl);
   }
 }
 
@@ -710,17 +722,21 @@ async function ensureInstallId() {
   return installId;
 }
 
+function stateKey(tabId) {
+  return `${STORAGE_KEYS.statePrefix}${tabId}`;
+}
+
 async function getState(tabId) {
   if (!Number.isInteger(tabId)) return DEFAULT_STATE;
 
-  const data = await chrome.storage.local.get({
-    [stateKey(tabId)]: { ...DEFAULT_STATE, tabId },
-  });
-
-  return data[stateKey(tabId)] || { ...DEFAULT_STATE, tabId };
+  const fallback = { ...DEFAULT_STATE, tabId };
+  const data = await chrome.storage.local.get({ [stateKey(tabId)]: fallback });
+  return data[stateKey(tabId)] || fallback;
 }
 
 async function setState(tabId, patch) {
+  if (!Number.isInteger(tabId)) return { ...DEFAULT_STATE, ...patch };
+
   const current = await getState(tabId);
   const next = { ...current, ...patch, tabId };
 
