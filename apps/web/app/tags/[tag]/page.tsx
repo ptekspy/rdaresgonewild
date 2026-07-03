@@ -46,7 +46,7 @@ export default async function TagPage({ params, searchParams }: PageProps) {
               href={`/tags/${item.slug}`}
               className={`rounded-full px-3.5 py-2 text-sm font-bold transition ${
                 item.slug === boardTag.slug
-                  ? "bg-pink-500 text-white"
+                  ? "rdgw-pill-active"
                   : "border border-white/10 bg-white/[0.035] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
               }`}
             >

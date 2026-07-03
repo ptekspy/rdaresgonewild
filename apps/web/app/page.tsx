@@ -56,8 +56,8 @@ export default async function HomePage() {
   return (
     <div className="rdgw-page-shell py-4 sm:py-8">
       <section className="rdgw-card-strong rdgw-glow-border relative isolate overflow-hidden px-5 py-10 sm:px-10 lg:px-12 lg:py-14">
-        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-orange-500/[0.18] blur-3xl" />
-        <div className="absolute -bottom-24 left-10 h-72 w-72 rounded-full bg-pink-600/20 blur-3xl" />
+        <div className="rdgw-hero-accent rdgw-hero-accent-one" />
+        <div className="rdgw-hero-accent rdgw-hero-accent-two" />
 
         <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="relative z-10 space-y-7">
@@ -206,8 +206,8 @@ async function BoardHomePage() {
   return (
     <div className="rdgw-page-shell py-4 sm:py-8">
       <section className="rdgw-card-strong rdgw-glow-border relative isolate overflow-hidden px-5 py-10 sm:px-10 lg:px-12 lg:py-14">
-        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-pink-500/[0.18] blur-3xl" />
-        <div className="absolute -bottom-24 left-10 h-72 w-72 rounded-full bg-cyan-500/[0.14] blur-3xl" />
+        <div className="rdgw-hero-accent rdgw-hero-accent-one" />
+        <div className="rdgw-hero-accent rdgw-hero-accent-two" />
 
         <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="relative z-10 space-y-7">
@@ -307,7 +307,7 @@ async function BoardHomePage() {
               <Link
                 key={creator.authorUsername}
                 href={`/u/${creator.authorUsername}`}
-                className="flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 transition hover:border-pink-500/40 hover:bg-white/[0.06]"
+                className="rdgw-list-link flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 transition hover:bg-white/[0.06]"
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.07] font-mono text-sm text-zinc-300">
                   #{index + 1}

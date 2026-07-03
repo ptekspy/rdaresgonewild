@@ -28,7 +28,7 @@ export function RedditPostCard({ post }: { post: BoardPost }) {
   const tagSlugs = getPostTagSlugs(post).slice(0, 3);
 
   return (
-    <article className="group overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] transition hover:-translate-y-0.5 hover:border-pink-500/40 hover:bg-white/[0.055]">
+    <article className="rdgw-post-card group overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] transition hover:-translate-y-0.5 hover:bg-white/[0.055]">
       <a href={getRedditUrl(post.permalink)} target="_blank" rel="noopener noreferrer" className="block">
         <div className="aspect-[4/5] bg-zinc-950">
           {imageUrl ? (
@@ -61,7 +61,7 @@ export function RedditPostCard({ post }: { post: BoardPost }) {
 
         <div className="flex flex-wrap gap-2">
           {post.flair && (
-            <span className="rounded-full bg-pink-500/[0.14] px-2.5 py-1 text-[11px] font-bold text-pink-100">
+            <span className="rdgw-flair-pill rounded-full px-2.5 py-1 text-[11px] font-bold">
               {post.flair}
             </span>
           )}

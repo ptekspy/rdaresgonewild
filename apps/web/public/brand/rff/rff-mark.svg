@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">r/FlashingAndFlaunting mark</title>
+  <desc id="desc">A neon camera flash mark with F and F initials.</desc>
+  <defs>
+    <linearGradient id="rff-bg" x1="74" y1="44" x2="430" y2="468" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10131B"/>
+      <stop offset="0.48" stop-color="#08090D"/>
+      <stop offset="1" stop-color="#171016"/>
+    </linearGradient>
+    <linearGradient id="rff-stroke" x1="107" y1="114" x2="405" y2="398" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30F4FF"/>
+      <stop offset="0.47" stop-color="#FF2D8F"/>
+      <stop offset="1" stop-color="#FFD15A"/>
+    </linearGradient>
+    <radialGradient id="rff-flash" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(164 156) rotate(45) scale(235)">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.25" stop-color="#39F3FF"/>
+      <stop offset="0.62" stop-color="#FF2D8F"/>
+      <stop offset="1" stop-color="#FF2D8F" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="rff-glow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#30F4FF" flood-opacity="0.48"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#FF2D8F" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#rff-bg)"/>
+  <path d="M82 214C112 141 172 100 252 100c98 0 174 65 190 159-48-47-109-73-181-73-73 0-133 24-179 72v-44Z" fill="url(#rff-flash)" opacity="0.46"/>
+  <path d="M144 154h224c22 0 40 18 40 40v164c0 22-18 40-40 40H144c-22 0-40-18-40-40V194c0-22 18-40 40-40Z" fill="#0C0E14" stroke="url(#rff-stroke)" stroke-width="14" filter="url(#rff-glow)"/>
+  <path d="M140 236h232M140 302h232" stroke="#242936" stroke-width="10" stroke-linecap="round"/>
+  <path d="M189 355V211h92v29h-56v30h50v29h-50v56h-36Zm116 0V211h90v29h-54v34h48v29h-48v52h-36Z" fill="#F7FBFF"/>
+  <path d="M117 92l28 48M82 142l55 22M395 94l-29 48M434 144l-56 20" stroke="#FFD15A" stroke-width="13" stroke-linecap="round"/>
+</svg>

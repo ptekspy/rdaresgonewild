@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">r/FlashingAndFlaunting social avatar</title>
+  <desc id="desc">Neon social preview artwork for r/FlashingAndFlaunting.</desc>
+  <defs>
+    <linearGradient id="bg" x1="128" y1="72" x2="888" y2="948" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10131B"/>
+      <stop offset="0.45" stop-color="#07080B"/>
+      <stop offset="1" stop-color="#191018"/>
+    </linearGradient>
+    <linearGradient id="neon" x1="188" y1="212" x2="824" y2="804" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30F4FF"/>
+      <stop offset="0.48" stop-color="#FF2D8F"/>
+      <stop offset="1" stop-color="#FFD15A"/>
+    </linearGradient>
+    <radialGradient id="flash" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(320 292) rotate(42) scale(510)">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.18" stop-color="#30F4FF"/>
+      <stop offset="0.5" stop-color="#FF2D8F" stop-opacity="0.64"/>
+      <stop offset="1" stop-color="#FF2D8F" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#30F4FF" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="34" flood-color="#FF2D8F" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <path d="M122 440c86-184 229-278 430-278 181 0 317 89 386 266-121-84-254-126-399-126-157 0-296 46-417 138Z" fill="url(#flash)" opacity="0.56"/>
+  <path d="M248 300h528c48 0 86 38 86 86v330c0 48-38 86-86 86H248c-48 0-86-38-86-86V386c0-48 38-86 86-86Z" fill="#0C0E14" stroke="url(#neon)" stroke-width="26" filter="url(#glow)"/>
+  <path d="M242 468h540M242 604h540" stroke="#263040" stroke-width="22" stroke-linecap="round"/>
+  <path d="M338 716V404h199v63H416v66h105v62H416v121h-78Zm251 0V404h194v63H666v72h103v62H666v115h-77Z" fill="#F7FBFF"/>
+  <path d="M233 168l58 101M146 274l116 45M790 168l-60 101M878 276l-118 43" stroke="#FFD15A" stroke-width="27" stroke-linecap="round"/>
+  <text x="512" y="900" text-anchor="middle" fill="#C9FAFF" font-family="Inter, Arial, sans-serif" font-size="54" font-weight="900" letter-spacing="8">PUBLIC OC BOARD</text>
+</svg>
