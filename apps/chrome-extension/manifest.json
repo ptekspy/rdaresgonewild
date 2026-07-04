@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Paid Politely Reddit Stream Crawler",
-  "description": "Streams Reddit post data into the Paid Politely API while the page lazy-loads.",
+  "name": "Paid Politely Local Reddit Crawler",
+  "description": "Parse Reddit listing pages directly from the DOM and stream posts to the local Paid Politely DB writer.",
   "version": "0.3.0",
   "action": {
-    "default_title": "Paid Politely Reddit Stream Crawler",
+    "default_title": "Paid Politely Local Reddit Crawler",
     "default_popup": "popup.html"
   },
   "background": {
@@ -14,7 +14,7 @@
   "permissions": ["scripting", "storage", "tabs"],
   "host_permissions": [
     "https://*.reddit.com/*",
-    "https://api.paidpolitely.com/*",
-    "https://api.paidpolitely.com/*"
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ]
 }

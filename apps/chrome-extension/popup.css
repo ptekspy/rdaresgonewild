@@ -1,18 +1,15 @@
-:root {
-  color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #130d17;
-  color: #fff7fb;
-}
-
 * {
   box-sizing: border-box;
 }
 
 body {
-  width: 380px;
   margin: 0;
-  background: radial-gradient(circle at top left, rgba(255, 102, 178, 0.22), transparent 35%), #130d17;
+  width: 360px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f8fafc;
+  background:
+    radial-gradient(circle at top left, rgba(255, 69, 0, 0.34), transparent 34%),
+    linear-gradient(135deg, #120a17 0%, #1d1026 55%, #2b1019 100%);
 }
 
 .shell {
@@ -21,19 +18,19 @@ body {
 
 header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  align-items: center;
   margin-bottom: 14px;
 }
 
 .eyebrow {
   margin: 0 0 2px;
-  color: #ff9acd;
+  color: #ffb199;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
   text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
 }
 
 h1 {
@@ -46,91 +43,99 @@ h1 {
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  background: #6f5c72;
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
+  background: #64748b;
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.18);
 }
 
 .dot.running {
-  background: #ffd166;
-  animation: pulse 1s infinite alternate;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
 }
 
 .dot.error {
-  background: #ff4d6d;
-}
-
-.dot.completed {
-  background: #6ee7b7;
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.22);
 }
 
 label {
   display: grid;
   gap: 6px;
   margin: 12px 0;
-  color: #f8cee4;
   font-size: 12px;
   font-weight: 700;
+  color: #f9c8b8;
 }
 
 input {
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
-  padding: 10px 11px;
-  background: rgba(255, 255, 255, 0.08);
-  color: inherit;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.65);
+  color: #fff;
   outline: none;
 }
 
 input:focus {
-  border-color: rgba(255, 154, 205, 0.8);
+  border-color: rgba(255, 111, 77, 0.75);
 }
 
 .page-box {
   display: grid;
   gap: 4px;
   margin: 12px 0;
-  padding: 10px;
+  padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  word-break: break-all;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.page-box small,
-.stats small,
-.hint {
-  color: #c6a7ba;
+.page-box small {
+  color: #ffb199;
+  font-weight: 700;
+}
+
+.page-box span {
+  display: block;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-all;
 }
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin: 12px 0;
+  margin: 14px 0;
 }
 
 .stats div {
-  min-width: 0;
-  padding: 10px 6px;
+  text-align: center;
+  padding: 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.08);
-  text-align: center;
 }
 
 .stats span {
   display: block;
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 800;
 }
 
+.stats small {
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
 .message {
-  min-height: 42px;
+  min-height: 44px;
   margin: 12px 0;
-  padding: 10px;
-  border-left: 3px solid #ff7abf;
-  border-radius: 10px;
-  background: rgba(255, 122, 191, 0.1);
-  color: #ffe7f4;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  line-height: 1.35;
 }
 
 .actions {
@@ -141,31 +146,31 @@ input:focus {
 button {
   flex: 1;
   border: 0;
-  border-radius: 12px;
-  padding: 11px 12px;
-  background: linear-gradient(135deg, #ff4da6, #ff8a3d);
-  color: white;
+  border-radius: 999px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #ff4500, #ff7a45);
+  color: #fff;
   font-weight: 800;
   cursor: pointer;
 }
 
 button.secondary {
-  flex: 0 0 92px;
   background: rgba(255, 255, 255, 0.12);
 }
 
 button:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .hint {
   margin: 12px 0 0;
+  color: #cbd5e1;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
-@keyframes pulse {
-  from { transform: scale(1); opacity: 0.7; }
-  to { transform: scale(1.2); opacity: 1; }
+code {
+  color: #fff;
+  font-weight: 800;
 }

@@ -1,39 +1,32 @@
-const DEFAULT_API_BASE = "https://api.paidpolitely.com";
-
 const STORAGE_KEYS = {
-  installId: "paidPolitely.installId",
-  apiBase: "paidPolitely.apiBase",
-  statePrefix: "paidPolitely.streamState:",
+  installId: "paidPolitelyLocalCrawler.installId",
+  config: "paidPolitelyLocalCrawler.config",
+  statePrefix: "paidPolitelyLocalCrawler.state:",
 };
+
+const DEFAULT_WRITER_BASE = "http://127.0.0.1:8791";
 
 const DEFAULT_STATE = {
   status: "idle",
-  apiBase: DEFAULT_API_BASE,
+  writerBase: DEFAULT_WRITER_BASE,
   pageUrl: "",
   tabId: null,
   sessionId: "",
   uploadToken: "",
   scrolls: 0,
-  linksSeen: 0,
-  linksQueued: 0,
-  postsFetched: 0,
-  postsSynced: 0,
-  postsSkipped: 0,
+  postsParsed: 0,
+  postsSaved: 0,
   message: "Ready.",
 };
 
-const FETCH_CONCURRENCY = 3;
-const STREAM_BATCH_SIZE = 10;
-const STREAM_FLUSH_MS = 1000;
-const DEFAULT_WAIT_MS = 1200;
-const DEFAULT_STABLE_ROUNDS = 14;
-const DEFAULT_MAX_SCROLLS = 1800;
+const UPLOAD_BATCH_SIZE = 50;
+const UPLOAD_FLUSH_MS = 1200;
 
 const crawlsByTabId = new Map();
-const crawlsById = new Map();
+const crawlsByCrawlId = new Map();
 
-chrome.runtime.onInstalled.addListener(() => {
-  ensureInstallId().catch(() => undefined);
+chrome.runtime.onInstalled.addListener(async () => {
+  await ensureInstallId();
 });
 
 chrome.runtime.onMessage.addListener((payload, _sender, sendResponse) => {
@@ -49,129 +42,130 @@ chrome.runtime.onMessage.addListener((payload, _sender, sendResponse) => {
 async function handleMessage(payload) {
   const tabId = Number(payload?.tabId);
 
-  if (payload?.type === "GET_CONFIG") {
-    return getConfig();
-  }
+  if (payload?.type === "GET_CONFIG") return getConfig();
 
   if (payload?.type === "SAVE_CONFIG") {
-    return setConfig({ apiBase: payload.apiBase });
+    const writerBase = normaliseWriterBase(payload.writerBase);
+    const config = { writerBase };
+    await chrome.storage.local.set({ [STORAGE_KEYS.config]: config });
+    return config;
   }
 
   if (payload?.type === "GET_STATE") {
     return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
   }
 
-  if (payload?.type === "START_CRAWL") {
+  if (payload?.type === "START_PAGE_CRAWL") {
     const pageUrl = String(payload.pageUrl || "");
-    const apiBase = normaliseApiBase(payload.apiBase || DEFAULT_API_BASE);
+    const writerBase = normaliseWriterBase(payload.writerBase);
 
     if (!Number.isInteger(tabId) || !isRedditUrl(pageUrl)) {
       return Number.isInteger(tabId)
-        ? setState(tabId, { ...DEFAULT_STATE, tabId, status: "error", message: "Open a reddit.com page first." })
-        : { ...DEFAULT_STATE, status: "error", message: "Open a reddit.com page first." };
+        ? setState(tabId, { ...DEFAULT_STATE, tabId, status: "error", message: "Open a Reddit page before crawling." })
+        : { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." };
     }
 
     const existing = crawlsByTabId.get(tabId);
     if (existing && !existing.finalising) {
-      return setState(tabId, { status: "error", message: "This tab already has a crawl running." });
+      return setState(tabId, {
+        status: "error",
+        message: "This tab already has a crawl running. Stop it before starting another.",
+      });
     }
 
-    await setConfig({ apiBase });
-
-    const state = await setState(tabId, {
+    const initialState = await setState(tabId, {
       ...DEFAULT_STATE,
       tabId,
-      apiBase,
+      writerBase,
       pageUrl,
       status: "running",
-      message: "Starting session...",
+      message: "Starting local DOM crawl...",
     });
 
-    runCrawl(tabId, state).catch(async (error) => {
+    runPageCrawl(tabId, initialState).catch(async (error) => {
       const crawl = crawlsByTabId.get(tabId);
       if (crawl) {
         crawl.stopRequested = true;
         crawl.scrollComplete = true;
       }
-
       await setState(tabId, { status: "error", message: String(error?.message || error) });
     });
 
-    return state;
+    return initialState;
   }
 
-  if (payload?.type === "STOP_CRAWL") {
+  if (payload?.type === "STOP_PAGE_CRAWL") {
     if (!Number.isInteger(tabId)) return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
 
     const crawl = crawlsByTabId.get(tabId);
     if (!crawl) return setState(tabId, { status: "idle", message: "No crawl is running for this tab." });
 
     crawl.stopRequested = true;
-    await requestInjectedCrawlerStop(tabId);
-    return setState(tabId, { status: "running", message: "Stopping scroll and flushing queued posts..." });
+    await requestPageCrawlerStop(tabId);
+
+    return setState(tabId, {
+      status: "running",
+      message: "Stopping scroll and finishing queued DB writes...",
+    });
   }
 
-  if (payload?.type === "PAGE_LINKS") {
-    handlePageLinks(payload).catch(() => undefined);
+  if (payload?.type === "PAGE_CRAWL_POSTS") {
+    handlePagePosts(payload).catch(() => {});
     return { ok: true };
   }
 
-  if (payload?.type === "PAGE_DONE") {
-    handlePageDone(payload).catch(() => undefined);
+  if (payload?.type === "PAGE_CRAWL_PROGRESS") {
+    handlePageProgress(payload).catch(() => {});
     return { ok: true };
   }
 
-  if (payload?.type === "PAGE_ERROR") {
-    handlePageError(payload).catch(() => undefined);
+  if (payload?.type === "PAGE_CRAWL_DONE") {
+    handlePageDone(payload).catch(() => {});
+    return { ok: true };
+  }
+
+  if (payload?.type === "PAGE_CRAWL_ERROR") {
+    handlePageError(payload).catch(() => {});
     return { ok: true };
   }
 
   return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
 }
 
-async function runCrawl(tabId, initialState) {
-  let crawl = null;
+async function runPageCrawl(tabId, initialState) {
+  const installId = await ensureInstallId();
+
+  await getJson(`${initialState.writerBase}/health`);
+
+  const sessionResponse = await postJson(`${initialState.writerBase}/session/start`, {
+    extensionInstallId: installId,
+    sourceUrl: initialState.pageUrl,
+    clientVersion: chrome.runtime.getManifest().version,
+    pageTitle: "",
+  });
+
+  const state = await setState(tabId, {
+    ...initialState,
+    sessionId: sessionResponse.session.id,
+    uploadToken: sessionResponse.uploadToken,
+    message: "Scrolling and writing parsed posts locally...",
+  });
+
+  const crawl = createCrawl(tabId, state);
+  crawlsByTabId.set(tabId, crawl);
+  crawlsByCrawlId.set(crawl.id, crawl);
 
   try {
-    const installId = await ensureInstallId();
-    const target = inferTargetFromUrl(initialState.pageUrl);
-
-    const sessionResponse = await postJson(`${initialState.apiBase}/api/v1/extension/sessions`, {
-      crawlMode: "page",
-      redditUsername: target || undefined,
-      sourceUrl: initialState.pageUrl,
-      extensionInstallId: installId,
-      clientVersion: chrome.runtime.getManifest().version,
-    });
-
-    const state = await setState(tabId, {
-      ...initialState,
-      sessionId: sessionResponse.session.id,
-      uploadToken: sessionResponse.uploadToken,
-      message: "Scrolling Reddit and streaming posts as they are found...",
-    });
-
-    crawl = createCrawl(tabId, state);
-    crawlsByTabId.set(tabId, crawl);
-    crawlsById.set(crawl.id, crawl);
-
-    await injectCrawler(tabId, {
+    await startStreamingDomCrawler(tabId, {
       crawlId: crawl.id,
-      waitMs: DEFAULT_WAIT_MS,
-      stableRounds: DEFAULT_STABLE_ROUNDS,
-      maxScrolls: DEFAULT_MAX_SCROLLS,
+      waitMs: 900,
+      stableRounds: 20,
+      maxScrolls: 2500,
     });
-
-    return await new Promise((resolve) => {
-      crawl.resolveComplete = resolve;
-    });
-  } finally {
-    if (crawl?.flushTimer) clearTimeout(crawl.flushTimer);
-
-    if (crawl) {
-      crawlsById.delete(crawl.id);
-      if (crawlsByTabId.get(tabId) === crawl) crawlsByTabId.delete(tabId);
-    }
+  } catch (error) {
+    crawlsByTabId.delete(tabId);
+    crawlsByCrawlId.delete(crawl.id);
+    throw error;
   }
 }
 
@@ -180,64 +174,71 @@ function createCrawl(tabId, state) {
     id: crypto.randomUUID(),
     tabId,
     state,
-    seenLinks: new Set(),
-    linkQueue: [],
+    seenPostIds: new Set(),
     postBatch: [],
-    fetchInFlight: 0,
     uploadInFlight: false,
     scrollComplete: false,
     finalising: false,
     stopRequested: false,
     latestScrolls: 0,
-    latestLinksSeen: 0,
-    postsFetched: 0,
-    postsSynced: 0,
-    skipped: 0,
+    latestPostsParsed: 0,
+    latestPostsSaved: 0,
     flushTimer: null,
-    resolveComplete: () => undefined,
   };
 }
 
 function getCrawlById(crawlId) {
-  return typeof crawlId === "string" ? crawlsById.get(crawlId) || null : null;
+  if (typeof crawlId !== "string") return null;
+  return crawlsByCrawlId.get(crawlId) || null;
 }
 
 function isActiveCrawl(crawl) {
-  return Boolean(crawl && crawlsById.get(crawl.id) === crawl && crawlsByTabId.get(crawl.tabId) === crawl);
+  return Boolean(crawl && crawlsByCrawlId.get(crawl.id) === crawl && crawlsByTabId.get(crawl.tabId) === crawl);
 }
 
-async function handlePageLinks(payload) {
+async function handlePagePosts(payload) {
   const crawl = getCrawlById(payload.crawlId);
   if (!isActiveCrawl(crawl) || crawl.finalising) return;
 
-  const links = Array.isArray(payload.links) ? payload.links.filter((link) => typeof link === "string") : [];
-  let newCount = 0;
+  const posts = Array.isArray(payload.posts) ? payload.posts : [];
+  let added = 0;
 
-  for (const link of links) {
-    if (crawl.seenLinks.has(link)) continue;
-    crawl.seenLinks.add(link);
-    crawl.linkQueue.push(link);
-    newCount++;
+  for (const post of posts) {
+    if (!post?.id || crawl.seenPostIds.has(post.id)) continue;
+    crawl.seenPostIds.add(post.id);
+    crawl.postBatch.push(post);
+    added++;
   }
 
   crawl.latestScrolls = Number(payload.scrolls) || crawl.latestScrolls;
-  crawl.latestLinksSeen = Math.max(crawl.latestLinksSeen, Number(payload.totalLinks) || crawl.seenLinks.size);
+  crawl.latestPostsParsed = Math.max(crawl.latestPostsParsed, Number(payload.totalPosts) || crawl.seenPostIds.size);
 
   crawl.state = await setState(crawl.tabId, {
     scrolls: crawl.latestScrolls,
-    linksSeen: crawl.latestLinksSeen,
-    linksQueued: crawl.linkQueue.length,
-    postsFetched: crawl.postsFetched,
-    postsSynced: crawl.postsSynced,
-    postsSkipped: crawl.skipped,
-    message:
-      newCount > 0
-        ? `Found ${crawl.seenLinks.size} post links. Fetching and streaming...`
-        : `Scrolling... ${crawl.seenLinks.size} links seen, ${crawl.postsSynced} posts saved.`,
+    postsParsed: crawl.latestPostsParsed,
+    postsSaved: crawl.latestPostsSaved,
+    message: added
+      ? `Parsed ${added} new post${added === 1 ? "" : "s"}. Writing local DB batches...`
+      : `Scrolling... ${crawl.latestPostsParsed} posts parsed.`,
   });
 
-  pumpLinkQueue(crawl);
-  maybeFinaliseCrawl(crawl);
+  maybeFlushUpload(crawl);
+  maybeFinalizeCrawl(crawl);
+}
+
+async function handlePageProgress(payload) {
+  const crawl = getCrawlById(payload.crawlId);
+  if (!isActiveCrawl(crawl) || crawl.finalising) return;
+
+  crawl.latestScrolls = Number(payload.scrolls) || crawl.latestScrolls;
+  crawl.latestPostsParsed = Math.max(crawl.latestPostsParsed, Number(payload.totalPosts) || crawl.seenPostIds.size);
+
+  crawl.state = await setState(crawl.tabId, {
+    scrolls: crawl.latestScrolls,
+    postsParsed: crawl.latestPostsParsed,
+    postsSaved: crawl.latestPostsSaved,
+    message: `Scrolling... ${crawl.latestPostsParsed} posts parsed, ${crawl.latestPostsSaved} saved.`,
+  });
 }
 
 async function handlePageDone(payload) {
@@ -245,22 +246,19 @@ async function handlePageDone(payload) {
   if (!isActiveCrawl(crawl)) return;
 
   crawl.scrollComplete = true;
+  crawl.stopRequested = payload.stopped === true || crawl.stopRequested;
   crawl.latestScrolls = Number(payload.scrolls) || crawl.latestScrolls;
-  crawl.latestLinksSeen = Math.max(crawl.latestLinksSeen, Number(payload.totalLinks) || crawl.seenLinks.size);
+  crawl.latestPostsParsed = Math.max(crawl.latestPostsParsed, Number(payload.totalPosts) || crawl.seenPostIds.size);
 
   crawl.state = await setState(crawl.tabId, {
     scrolls: crawl.latestScrolls,
-    linksSeen: crawl.latestLinksSeen,
-    linksQueued: crawl.linkQueue.length,
-    postsFetched: crawl.postsFetched,
-    postsSynced: crawl.postsSynced,
-    postsSkipped: crawl.skipped,
-    message: "Reached the lazy-load bottom. Finishing queued posts...",
+    postsParsed: crawl.latestPostsParsed,
+    postsSaved: crawl.latestPostsSaved,
+    message: "Reached the end of lazy loading. Finishing local DB writes...",
   });
 
-  pumpLinkQueue(crawl);
   maybeFlushUpload(crawl);
-  maybeFinaliseCrawl(crawl);
+  maybeFinalizeCrawl(crawl);
 }
 
 async function handlePageError(payload) {
@@ -269,50 +267,12 @@ async function handlePageError(payload) {
 
   crawl.scrollComplete = true;
   crawl.stopRequested = true;
-  await setState(crawl.tabId, { status: "error", message: `Page crawler stopped: ${String(payload.error || "unknown error")}` });
-  maybeFinaliseCrawl(crawl);
-}
-
-function pumpLinkQueue(crawl) {
-  if (!isActiveCrawl(crawl)) return;
-
-  while (crawl.fetchInFlight < FETCH_CONCURRENCY && crawl.linkQueue.length > 0 && !crawl.stopRequested) {
-    const link = crawl.linkQueue.shift();
-    crawl.fetchInFlight++;
-
-    fetchAndQueuePost(crawl, link)
-      .catch(() => {
-        if (isActiveCrawl(crawl)) crawl.skipped++;
-      })
-      .finally(() => {
-        if (!isActiveCrawl(crawl)) return;
-        crawl.fetchInFlight--;
-        pumpLinkQueue(crawl);
-        maybeFlushUpload(crawl);
-        maybeFinaliseCrawl(crawl);
-      });
-  }
-}
-
-async function fetchAndQueuePost(crawl, link) {
-  if (!isActiveCrawl(crawl) || crawl.stopRequested) return;
-
-  const rawPost = await fetchPostFromPermalink(link);
-  const normalised = normalisePost(rawPost, link);
-  if (!normalised || !isActiveCrawl(crawl)) return;
-
-  crawl.postsFetched++;
-  crawl.postBatch.push(normalised);
-
   crawl.state = await setState(crawl.tabId, {
-    postsFetched: crawl.postsFetched,
-    linksQueued: crawl.linkQueue.length,
-    postsSkipped: crawl.skipped,
-    message: `Fetched ${crawl.postsFetched}. Streaming ${crawl.postBatch.length} queued posts...`,
+    status: "error",
+    message: `Page crawler stopped: ${String(payload.error || "unknown error")}`,
   });
 
-  if (crawl.postBatch.length >= STREAM_BATCH_SIZE) maybeFlushUpload(crawl);
-  else scheduleUploadFlush(crawl);
+  maybeFinalizeCrawl(crawl);
 }
 
 function scheduleUploadFlush(crawl) {
@@ -322,44 +282,49 @@ function scheduleUploadFlush(crawl) {
     if (!isActiveCrawl(crawl)) return;
     crawl.flushTimer = null;
     maybeFlushUpload(crawl);
-  }, STREAM_FLUSH_MS);
+  }, UPLOAD_FLUSH_MS);
 }
 
 function maybeFlushUpload(crawl) {
-  if (!isActiveCrawl(crawl) || crawl.uploadInFlight || crawl.postBatch.length === 0) return;
+  if (!isActiveCrawl(crawl) || crawl.uploadInFlight || crawl.postBatch.length === 0) {
+    if (crawl?.postBatch?.length > 0) scheduleUploadFlush(crawl);
+    return;
+  }
 
-  const posts = crawl.postBatch.splice(0, STREAM_BATCH_SIZE);
+  const posts = crawl.postBatch.splice(0, UPLOAD_BATCH_SIZE);
   crawl.uploadInFlight = true;
 
-  uploadPosts(crawl, posts, false)
-    .then(async (upload) => {
+  uploadPosts(crawl.state, posts, false)
+    .then(async (result) => {
       if (!isActiveCrawl(crawl)) return;
-      crawl.postsSynced = Number(upload.session?.postsReceived) || crawl.postsSynced;
+
+      crawl.latestPostsSaved = Number(result.session?.postsReceived) || crawl.latestPostsSaved;
       crawl.state = await setState(crawl.tabId, {
-        postsSynced: crawl.postsSynced,
-        linksQueued: crawl.linkQueue.length,
-        postsSkipped: crawl.skipped,
-        message: `Saved ${crawl.postsSynced} posts. Still scrolling/fetching in parallel...`,
+        postsSaved: crawl.latestPostsSaved,
+        message: `Writing local DB... ${crawl.latestPostsSaved} saved from ${crawl.latestPostsParsed} parsed.`,
       });
     })
     .catch(async (error) => {
       if (!isActiveCrawl(crawl)) return;
       crawl.stopRequested = true;
       crawl.scrollComplete = true;
-      await setState(crawl.tabId, { status: "error", message: String(error?.message || error) });
+      crawl.state = await setState(crawl.tabId, {
+        status: "error",
+        message: String(error?.message || error),
+      });
     })
     .finally(() => {
       if (!isActiveCrawl(crawl)) return;
       crawl.uploadInFlight = false;
       if (crawl.postBatch.length > 0) maybeFlushUpload(crawl);
-      maybeFinaliseCrawl(crawl);
+      maybeFinalizeCrawl(crawl);
     });
 }
 
-function maybeFinaliseCrawl(crawl) {
+function maybeFinalizeCrawl(crawl) {
   if (!isActiveCrawl(crawl) || crawl.finalising) return;
   if (!crawl.scrollComplete && !crawl.stopRequested) return;
-  if (crawl.linkQueue.length > 0 || crawl.fetchInFlight > 0 || crawl.uploadInFlight) return;
+  if (crawl.uploadInFlight) return;
 
   crawl.finalising = true;
 
@@ -368,360 +333,606 @@ function maybeFinaliseCrawl(crawl) {
     crawl.flushTimer = null;
   }
 
-  const finalPosts = crawl.postBatch.splice(0);
+  const posts = crawl.postBatch.splice(0);
 
-  uploadPosts(crawl, finalPosts, true)
-    .then(async (upload) => {
+  uploadPosts(crawl.state, posts, true)
+    .then(async (result) => {
       if (!isActiveCrawl(crawl)) return;
-      crawl.postsSynced = Number(upload.session?.postsReceived) || crawl.postsSynced;
 
-      const status = crawl.stopRequested ? "idle" : "completed";
-      const message = crawl.stopRequested
-        ? `Stopped. Saved ${crawl.postsSynced} posts, skipped ${crawl.skipped}.`
-        : `Completed. Saved ${crawl.postsSynced} posts from ${crawl.seenLinks.size} links${crawl.skipped ? `, skipped ${crawl.skipped}` : ""}.`;
+      crawl.latestPostsSaved = Number(result.session?.postsReceived) || crawl.latestPostsSaved;
+
+      await postJson(`${crawl.state.writerBase}/session/complete`, {
+        sessionId: crawl.state.sessionId,
+        uploadToken: crawl.state.uploadToken,
+        status: crawl.stopRequested ? "stopped" : "completed",
+      }).catch(() => {});
 
       await setState(crawl.tabId, {
-        status,
+        status: crawl.stopRequested ? "idle" : "completed",
         scrolls: crawl.latestScrolls,
-        linksSeen: crawl.latestLinksSeen,
-        linksQueued: 0,
-        postsFetched: crawl.postsFetched,
-        postsSynced: crawl.postsSynced,
-        postsSkipped: crawl.skipped,
-        message,
+        postsParsed: crawl.latestPostsParsed,
+        postsSaved: crawl.latestPostsSaved,
+        message: crawl.stopRequested
+          ? `Stopped. Saved ${crawl.latestPostsSaved} posts.`
+          : `Completed. Saved ${crawl.latestPostsSaved} posts from ${crawl.latestPostsParsed} parsed cards.`,
       });
-
-      crawl.resolveComplete({ postsReceived: crawl.postsSynced, stopped: crawl.stopRequested });
     })
     .catch(async (error) => {
       if (isActiveCrawl(crawl)) {
         await setState(crawl.tabId, { status: "error", message: String(error?.message || error) });
       }
-      crawl.resolveComplete({ postsReceived: crawl.postsSynced, error });
+    })
+    .finally(() => {
+      crawlsByCrawlId.delete(crawl.id);
+      if (crawlsByTabId.get(crawl.tabId) === crawl) crawlsByTabId.delete(crawl.tabId);
     });
 }
 
-async function injectCrawler(tabId, options) {
+async function startStreamingDomCrawler(tabId, options) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    func: startInjectedRedditCrawler,
+    func: startRedditDomCrawler,
     args: [options],
   });
 }
 
-async function requestInjectedCrawlerStop(tabId) {
+async function requestPageCrawlerStop(tabId) {
   await chrome.scripting
     .executeScript({
       target: { tabId },
       func: () => {
-        if (window.__paidPolitelyStreamCrawler) window.__paidPolitelyStreamCrawler.stopped = true;
+        if (window.__paidPolitelyDomCrawler) window.__paidPolitelyDomCrawler.stopped = true;
       },
     })
-    .catch(() => undefined);
+    .catch(() => {});
 }
 
-function startInjectedRedditCrawler(options) {
+function startRedditDomCrawler(options) {
   const crawlId = options?.crawlId;
-  const waitMs = options?.waitMs || 1200;
-  const stableRoundsTarget = options?.stableRounds || 14;
-  const maxScrolls = options?.maxScrolls || 1800;
+  const waitMs = options?.waitMs || 900;
+  const stableRoundsTarget = options?.stableRounds || 20;
+  const maxScrolls = options?.maxScrolls || 2500;
 
   if (!crawlId) {
-    chrome.runtime.sendMessage({ type: "PAGE_ERROR", error: "Missing crawl id" }).catch(() => undefined);
+    chrome.runtime.sendMessage({ type: "PAGE_CRAWL_ERROR", error: "Missing crawl id" }).catch(() => {});
     return;
   }
 
-  if (window.__paidPolitelyStreamCrawler) window.__paidPolitelyStreamCrawler.stopped = true;
+  if (window.__paidPolitelyDomCrawler) window.__paidPolitelyDomCrawler.stopped = true;
 
   const crawler = {
     crawlId,
     stopped: false,
-    seenPostIds: new Set(),
-    seenLinks: new Set(),
+    seen: new Set(),
     scrolls: 0,
     stableRounds: 0,
     previousHeight: 0,
   };
 
-  window.__paidPolitelyStreamCrawler = crawler;
+  window.__paidPolitelyDomCrawler = crawler;
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function send(message) {
-    chrome.runtime.sendMessage({ crawlId, ...message }).catch(() => undefined);
+    chrome.runtime.sendMessage({ crawlId, ...message }).catch(() => {});
   }
 
-  function collectNewLinks() {
-    const links = [];
-    const candidates = [];
+  function collectNewPosts() {
+    const posts = [];
 
-    for (const post of document.querySelectorAll("shreddit-post")) {
-      candidates.push(post.getAttribute("permalink"));
-      candidates.push(post.getAttribute("content-href"));
-      candidates.push(post.getAttribute("href"));
+    for (const card of document.querySelectorAll("shreddit-post")) {
+      const post = parsePostCard(card);
+      if (!post || crawler.seen.has(post.id)) continue;
+
+      crawler.seen.add(post.id);
+      posts.push(post);
     }
 
-    for (const tracker of document.querySelectorAll('faceplate-tracker[source="post"] a[href*="/comments/"]')) {
-      candidates.push(tracker.href || tracker.getAttribute("href"));
-    }
-
-    for (const anchor of document.querySelectorAll('a[href*="/comments/"]')) {
-      candidates.push(anchor.href || anchor.getAttribute("href"));
-    }
-
-    for (const candidate of candidates) {
-      const normalised = normalisePostHref(candidate);
-      if (!normalised || crawler.seenLinks.has(normalised.href) || crawler.seenPostIds.has(normalised.id)) continue;
-
-      crawler.seenLinks.add(normalised.href);
-      crawler.seenPostIds.add(normalised.id);
-      links.push(normalised.href);
-    }
-
-    if (links.length > 0) {
+    if (posts.length > 0) {
       send({
-        type: "PAGE_LINKS",
-        links,
+        type: "PAGE_CRAWL_POSTS",
+        posts,
         scrolls: crawler.scrolls,
-        totalLinks: crawler.seenLinks.size,
+        totalPosts: crawler.seen.size,
       });
     }
 
-    return links.length;
+    return posts.length;
   }
 
-  function normalisePostHref(value) {
-    if (typeof value !== "string" || !value.trim()) return null;
+  function parsePostCard(card) {
+    const fullId = cleanText(card.getAttribute("id"));
+    const id = cleanRedditId(fullId);
+    const title = cleanText(card.getAttribute("post-title")) || cleanText(card.querySelector('[slot="title"], h3')?.textContent);
+    const author = cleanAuthor(card.getAttribute("author"));
+    const subreddit = cleanSubreddit(
+      card.getAttribute("subreddit-prefixed-name") ||
+        card.getAttribute("subreddit-name") ||
+        card.querySelector('[data-testid="subreddit-name"]')?.textContent ||
+        inferSubreddit(card.getAttribute("permalink") || "")
+    );
 
-    try {
-      const url = new URL(value, location.href);
-      if (!/(^|\.)reddit\.com$/i.test(url.hostname)) return null;
+    if (!id || !title || !author || !subreddit) return null;
 
-      const match = url.pathname.match(/(?:\/r\/([^/]+))?\/comments\/([a-z0-9]+)(?:\/([^/?#]+))?/i);
-      if (!match) return null;
+    const permalink = normalisePermalink(card.getAttribute("permalink") || card.querySelector('a[href*="/comments/"]')?.getAttribute("href") || "");
+    const createdUtc = parseCreatedUtc(card.getAttribute("created-timestamp") || card.querySelector("time")?.getAttribute("datetime"));
+    const media = extractMedia(card, permalink);
 
-      const subreddit = match[1] ? `/r/${match[1]}` : "";
-      const postId = match[2].toLowerCase();
-      const slug = match[3] ? `/${match[3]}` : "";
+    return {
+      id,
+      name: `t3_${id}`,
+      subreddit,
+      title,
+      selftext: cleanText(
+        card.querySelector('[slot="text-body"], [data-click-id="text"], .rtjson, shreddit-post-body')?.textContent
+      ),
+      author,
+      link_flair_text: extractFlair(card),
+      score: parseCount(card.getAttribute("score")),
+      upvoteCount: parseCount(card.getAttribute("score")),
+      upvote_ratio: parseFloatOrNull(card.getAttribute("upvote-ratio")),
+      num_comments: parseCount(card.getAttribute("comment-count")),
+      shareCount: null,
+      crosspostCount: 0,
+      mediaUrls: media.mediaUrls,
+      imageUrls: media.imageUrls,
+      outboundUrl: media.outboundUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      permalink,
+      created_utc: createdUtc,
+      rawJson: {
+        source: "reddit-dom",
+        postType: card.getAttribute("post-type") || null,
+        domain: card.getAttribute("domain") || null,
+        contentHref: card.getAttribute("content-href") || null,
+        parsedAt: new Date().toISOString(),
+      },
+    };
+  }
 
-      return {
-        id: postId,
-        href: `https://www.reddit.com${subreddit}/comments/${postId}${slug}/`,
+  function extractMedia(card, permalink) {
+    const bucket = new Map();
+    const contentHref = normaliseUrl(card.getAttribute("content-href"));
+    const postType = String(card.getAttribute("post-type") || "").toLowerCase();
+
+    const add = (raw, options = {}) => {
+      const url = normaliseUrl(raw);
+      if (!url || isIgnoredMediaUrl(url)) return;
+
+      const key = mediaKey(url);
+      const existing = bucket.get(key);
+      const candidate = {
+        url,
+        isImage: options.isImage ?? isImageLikeUrl(url),
+        isVideo: options.isVideo ?? isVideoLikeUrl(url),
+        width: options.width || widthFromUrl(url) || 0,
+        directScore: directnessScore(url, options),
       };
+
+      if (!existing || rankMedia(candidate) > rankMedia(existing)) bucket.set(key, candidate);
+    };
+
+    if (contentHref) {
+      add(contentHref, {
+        isImage: isImageLikeUrl(contentHref) || postType === "image",
+        isVideo: isVideoLikeUrl(contentHref) || postType === "video" || isRedgifsUrl(contentHref),
+        width: 99999,
+        direct: true,
+      });
+
+      const redgifsIframe = toRedgifsIframeUrl(contentHref);
+      if (redgifsIframe) add(redgifsIframe, { isVideo: true, direct: true, width: 99999 });
+    }
+
+    for (const embed of card.querySelectorAll("shreddit-embed")) {
+      add(embed.getAttribute("src"), { isVideo: true, direct: true, width: 99999 });
+      const html = embed.getAttribute("html") || "";
+      for (const url of urlsFromText(html)) {
+        add(url, { isVideo: isVideoLikeUrl(url) || isRedgifsUrl(url), direct: true, width: 99999 });
+      }
+    }
+
+    for (const player of card.querySelectorAll("shreddit-player")) {
+      for (const attr of [
+        "src",
+        "poster",
+        "preview",
+        "playback-url",
+        "fallback-url",
+        "hls-url",
+        "dash-url",
+        "scrubber-media-url",
+        "video-url",
+        "poster-url",
+      ]) {
+        add(player.getAttribute(attr), {
+          isImage: attr.includes("poster") || attr.includes("preview"),
+          isVideo: !attr.includes("poster") && !attr.includes("preview"),
+          direct: true,
+          width: 99999,
+        });
+      }
+
+      for (const value of Object.values(player.dataset || {})) {
+        for (const url of urlsFromText(value)) add(url, { direct: true });
+      }
+    }
+
+    for (const video of card.querySelectorAll("video")) {
+      add(video.getAttribute("src"), { isVideo: true, direct: true, width: 99999 });
+      add(video.getAttribute("poster"), { isImage: true, width: 99999 });
+    }
+
+    for (const source of card.querySelectorAll("source")) {
+      add(source.getAttribute("src"), { isVideo: true, direct: true, width: 99999 });
+      add(source.getAttribute("srcset"), { isImage: true });
+    }
+
+    for (const img of card.querySelectorAll("img")) {
+      if (shouldIgnoreImageElement(img)) continue;
+
+      const bestSrcset = bestUrlFromSrcset(img.getAttribute("srcset"));
+      if (bestSrcset) add(bestSrcset.url, { isImage: true, width: bestSrcset.width });
+
+      const src = img.currentSrc || img.getAttribute("src");
+      add(src, { isImage: true, width: Number(img.getAttribute("width")) || widthFromUrl(src) || 0 });
+    }
+
+    // Fallback regex pass for current Reddit server-rendered media.
+    for (const url of urlsFromText(card.innerHTML)) {
+      if (!isLikelyPostMediaUrl(url)) continue;
+      add(url, { isImage: isImageLikeUrl(url), isVideo: isVideoLikeUrl(url) || isRedgifsUrl(url) });
+    }
+
+    const values = [...bucket.values()].sort((a, b) => rankMedia(b) - rankMedia(a));
+    const mediaUrls = values.map((item) => item.url);
+    const imageUrls = values.filter((item) => item.isImage).map((item) => item.url);
+
+    return {
+      mediaUrls,
+      imageUrls,
+      outboundUrl: contentHref && stripUrlQuery(contentHref) !== stripUrlQuery(permalink) ? contentHref : mediaUrls[0] || null,
+      thumbnailUrl: imageUrls[0] || null,
+    };
+  }
+
+  function directnessScore(url, options) {
+    if (options.direct) return 1000000;
+    try {
+      const parsed = new URL(url);
+      if (/^i\.redd\.it$/i.test(parsed.hostname)) return 900000;
+      if (/redgifs\.com$/i.test(parsed.hostname)) return 850000;
+      if (/^v\.redd\.it$/i.test(parsed.hostname)) return 800000;
+      if (/^preview\.redd\.it$/i.test(parsed.hostname)) return 500000;
+      return 100000;
+    } catch {
+      return 0;
+    }
+  }
+
+  function rankMedia(item) {
+    return item.directScore + item.width;
+  }
+
+  function shouldIgnoreImageElement(img) {
+    const src = normaliseUrl(img.currentSrc || img.getAttribute("src"));
+    if (!src) return true;
+    if (isIgnoredMediaUrl(src)) return true;
+
+    const className = String(img.className || "");
+    if (/subreddit-icon|avatar|snoovatar|emoji|award|flair/i.test(className)) return true;
+
+    const width = Number(img.getAttribute("width") || img.naturalWidth || 0);
+    const height = Number(img.getAttribute("height") || img.naturalHeight || 0);
+    if (width > 0 && height > 0 && width <= 64 && height <= 64 && !/redd\.it/i.test(src)) return true;
+
+    return false;
+  }
+
+  function isIgnoredMediaUrl(value) {
+    try {
+      const url = new URL(decodeHtml(value));
+      const host = url.hostname.toLowerCase();
+      const path = url.pathname.toLowerCase();
+
+      if (host.includes("redditstatic.com")) return true;
+      if (host.includes("emoji.redditmedia.com")) return true;
+      if (path.includes("/snoovatar/avatars/")) return true;
+      if (path.includes("/styles/communityicon_")) return true;
+      if (path.includes("/styles/profileicon_")) return true;
+
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  function isLikelyPostMediaUrl(value) {
+    try {
+      const url = new URL(decodeHtml(value));
+      const host = url.hostname.toLowerCase();
+      if (["i.redd.it", "preview.redd.it", "external-preview.redd.it", "v.redd.it"].includes(host)) return true;
+      if (host.endsWith("redgifs.com")) return true;
+      if (/\/gallery\//i.test(url.pathname)) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  function isImageLikeUrl(value) {
+    if (!value) return false;
+    try {
+      const url = new URL(decodeHtml(value));
+      const host = url.hostname.toLowerCase();
+      const path = url.pathname.toLowerCase();
+
+      return (
+        ["i.redd.it", "preview.redd.it", "external-preview.redd.it"].includes(host) ||
+        /\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])/i.test(path)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function isVideoLikeUrl(value) {
+    if (!value) return false;
+    try {
+      const url = new URL(decodeHtml(value));
+      const host = url.hostname.toLowerCase();
+      const path = url.pathname.toLowerCase();
+
+      return host === "v.redd.it" || host.endsWith("redgifs.com") || /\.(?:mp4|m3u8|webm|mov)(?:$|[?#])/i.test(path);
+    } catch {
+      return false;
+    }
+  }
+
+  function isRedgifsUrl(value) {
+    try {
+      return new URL(decodeHtml(value)).hostname.toLowerCase().endsWith("redgifs.com");
+    } catch {
+      return false;
+    }
+  }
+
+  function toRedgifsIframeUrl(value) {
+    try {
+      const url = new URL(decodeHtml(value));
+      if (!url.hostname.toLowerCase().endsWith("redgifs.com")) return null;
+      const parts = url.pathname.split("/").filter(Boolean);
+      const index = parts.findIndex((part) => ["watch", "ifr"].includes(part.toLowerCase()));
+      const slug = index >= 0 ? parts[index + 1] : null;
+      return slug ? `https://www.redgifs.com/ifr/${slug}` : null;
     } catch {
       return null;
     }
   }
 
+  function bestUrlFromSrcset(value) {
+    if (!value) return null;
+
+    let best = null;
+    for (const part of String(value).split(",")) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      const pieces = trimmed.split(/\s+/);
+      const url = normaliseUrl(pieces[0]);
+      if (!url) continue;
+
+      const widthToken = pieces.find((piece) => /^\d+w$/i.test(piece));
+      const width = widthToken ? Number.parseInt(widthToken, 10) : widthFromUrl(url) || 0;
+      if (!best || width > best.width) best = { url, width };
+    }
+
+    return best;
+  }
+
+  function mediaKey(value) {
+    try {
+      const url = new URL(decodeHtml(value));
+      const host = url.hostname.toLowerCase();
+      const path = url.pathname;
+
+      if (host === "preview.redd.it") {
+        const file = path.split("/").pop() || path;
+        const match = file.match(/(?:^|-)v\d+-([A-Za-z0-9_-]+\.(?:jpe?g|png|gif|webp|avif))/i);
+        if (match) return `${host}:${match[1].toLowerCase()}`;
+        return `${host}:${file.replace(/\.(?:jpe?g|png|gif|webp|avif).*$/i, "").toLowerCase()}`;
+      }
+
+      if (host === "i.redd.it") return `${host}:${(path.split("/").pop() || path).toLowerCase()}`;
+
+      if (host.endsWith("redgifs.com")) {
+        const parts = path.split("/").filter(Boolean);
+        const index = parts.findIndex((part) => ["watch", "ifr"].includes(part.toLowerCase()));
+        const slug = index >= 0 ? parts[index + 1] : parts.at(-1);
+        return `redgifs:${String(slug || value).toLowerCase()}`;
+      }
+
+      return `${host}:${path.replace(/\/$/, "")}`;
+    } catch {
+      return String(value).replace(/[?#].*$/, "");
+    }
+  }
+
+  function urlsFromText(value) {
+    const decoded = decodeHtml(String(value || ""));
+    const urls = [];
+
+    for (const match of decoded.matchAll(/https?:\/\/[^\s"'<>\\)]+/gi)) {
+      urls.push(match[0].replace(/,$/, ""));
+    }
+
+    return urls;
+  }
+
+  function extractFlair(card) {
+    const selectors = [
+      "shreddit-post-flair",
+      '[data-testid="post-flair"]',
+      '[slot="post-flair"]',
+      '[slot="flair"]',
+      "faceplate-tracker[noun='post_flair']",
+    ];
+
+    for (const selector of selectors) {
+      const value = cleanText(card.querySelector(selector)?.textContent);
+      if (value) return value;
+    }
+
+    return null;
+  }
+
+  function parseCreatedUtc(value) {
+    if (!value) return Math.floor(Date.now() / 1000);
+
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric > 10_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : Math.floor(Date.now() / 1000);
+  }
+
+  function parseCount(value) {
+    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+    const raw = cleanText(value).toLowerCase();
+    if (!raw) return 0;
+
+    const match = raw.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return 0;
+
+    let num = Number(match[0]);
+    if (!Number.isFinite(num)) return 0;
+
+    if (raw.includes("k")) num *= 1000;
+    if (raw.includes("m")) num *= 1000000;
+
+    return Math.round(num);
+  }
+
+  function parseFloatOrNull(value) {
+    const parsed = Number.parseFloat(String(value || ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function cleanText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function cleanAuthor(value) {
+    return cleanText(value).replace(/^u\//i, "").replace(/^\/u\//i, "");
+  }
+
+  function cleanSubreddit(value) {
+    return cleanText(value).replace(/^r\//i, "").replace(/^\/r\//i, "");
+  }
+
+  function cleanRedditId(value) {
+    return cleanText(value).replace(/^t3_/i, "");
+  }
+
+  function inferSubreddit(permalink) {
+    return String(permalink || "").match(/\/r\/([^/]+)/i)?.[1] || "";
+  }
+
+  function normalisePermalink(value) {
+    const raw = cleanText(value);
+    if (!raw) return location.href;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return `https://www.reddit.com${raw.startsWith("/") ? raw : `/${raw}`}`;
+  }
+
+  function normaliseUrl(value) {
+    const raw = decodeHtml(cleanText(value));
+    if (!raw) return null;
+
+    try {
+      return new URL(raw, location.href).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function widthFromUrl(value) {
+    try {
+      const url = new URL(decodeHtml(value));
+      return Number.parseInt(url.searchParams.get("width") || "", 10) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function stripUrlQuery(value) {
+    try {
+      const url = new URL(value, location.href);
+      return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
+    } catch {
+      return String(value || "").replace(/[?#].*$/, "").replace(/\/$/, "");
+    }
+  }
+
+  function decodeHtml(value) {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(value || "");
+    return textarea.value;
+  }
+
   async function run() {
     try {
-      collectNewLinks();
+      collectNewPosts();
 
       while (!crawler.stopped && crawler.scrolls < maxScrolls && crawler.stableRounds < stableRoundsTarget) {
-        const beforeLinks = crawler.seenLinks.size;
+        const beforePosts = crawler.seen.size;
         const beforeHeight = document.documentElement.scrollHeight;
 
         window.scrollTo({ top: beforeHeight, behavior: "auto" });
         await sleep(waitMs);
-        collectNewLinks();
+        const newAtBottom = collectNewPosts();
 
         window.scrollBy({ top: Math.max(500, Math.round(window.innerHeight * 0.95)), behavior: "auto" });
         await sleep(waitMs);
+        const newAfterNudge = collectNewPosts();
 
-        const newLinks = collectNewLinks();
         crawler.scrolls++;
 
         const afterHeight = document.documentElement.scrollHeight;
         const atBottom = Math.ceil(window.scrollY + window.innerHeight) >= afterHeight - 8;
         const noNewHeight = afterHeight === beforeHeight && afterHeight === crawler.previousHeight;
-        const noNewLinks = crawler.seenLinks.size === beforeLinks && newLinks === 0;
+        const noNewPosts = crawler.seen.size === beforePosts && newAtBottom === 0 && newAfterNudge === 0;
 
-        crawler.stableRounds = atBottom && noNewHeight && noNewLinks ? crawler.stableRounds + 1 : 0;
+        crawler.stableRounds = atBottom && noNewHeight && noNewPosts ? crawler.stableRounds + 1 : 0;
         crawler.previousHeight = afterHeight;
 
-        send({ type: "PAGE_LINKS", links: [], scrolls: crawler.scrolls, totalLinks: crawler.seenLinks.size });
+        send({ type: "PAGE_CRAWL_PROGRESS", scrolls: crawler.scrolls, totalPosts: crawler.seen.size });
       }
 
-      collectNewLinks();
-      send({ type: "PAGE_DONE", scrolls: crawler.scrolls, totalLinks: crawler.seenLinks.size, stopped: crawler.stopped });
+      collectNewPosts();
+      send({ type: "PAGE_CRAWL_DONE", scrolls: crawler.scrolls, totalPosts: crawler.seen.size, stopped: crawler.stopped });
     } catch (error) {
-      send({ type: "PAGE_ERROR", error: String(error?.message || error) });
+      send({ type: "PAGE_CRAWL_ERROR", error: String(error?.message || error) });
     }
   }
 
   run();
 }
 
-async function fetchPostFromPermalink(permalink) {
-  const url = `${permalink.replace(/\/$/, "")}.json?raw_json=1`;
-  let lastError = null;
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      const response = await fetch(url, {
-        credentials: "include",
-        headers: { accept: "application/json" },
-      });
-
-      if (response.status === 429 || response.status >= 500) {
-        await sleep(750 * (attempt + 1));
-        continue;
-      }
-
-      if (!response.ok) throw new Error(`Reddit returned ${response.status} for ${permalink}`);
-
-      const listing = await response.json();
-      const raw = listing?.[0]?.data?.children?.[0]?.data;
-      if (!raw?.id) throw new Error(`Could not parse Reddit post JSON for ${permalink}`);
-
-      return raw;
-    } catch (error) {
-      lastError = error;
-      await sleep(500 * (attempt + 1));
-    }
-  }
-
-  throw lastError || new Error(`Failed to fetch ${permalink}`);
-}
-
-function normalisePost(raw, fallbackPermalink) {
-  if (!raw?.id || !raw?.name || !raw?.title || !raw?.author || !raw?.created_utc) return null;
-  if (raw.author === "[deleted]") return null;
-
-  const permalink = normalisePermalink(raw.permalink || fallbackPermalink || `/comments/${raw.id}`);
-  const urls = extractUrls(raw, permalink);
-
-  return {
-    id: raw.id,
-    name: raw.name,
-    subreddit: raw.subreddit || inferSubreddit(permalink) || "unknown",
-    title: raw.title,
-    selftext: raw.selftext || "",
-    author: raw.author,
-    link_flair_text: raw.link_flair_text || null,
-    score: typeof raw.score === "number" ? raw.score : 0,
-    upvoteCount: typeof raw.ups === "number" ? raw.ups : null,
-    upvote_ratio: typeof raw.upvote_ratio === "number" ? raw.upvote_ratio : null,
-    num_comments: typeof raw.num_comments === "number" ? raw.num_comments : 0,
-    shareCount: typeof raw.share_count === "number" ? raw.share_count : null,
-    crosspostCount: typeof raw.num_crossposts === "number" ? raw.num_crossposts : 0,
-    mediaUrls: urls.mediaUrls,
-    imageUrls: urls.imageUrls,
-    outboundUrl: urls.outboundUrl,
-    thumbnailUrl: urls.thumbnailUrl,
-    permalink,
-    created_utc: raw.created_utc,
-    rawJson: raw,
-  };
-}
-
-function extractUrls(raw, permalink) {
-  const mediaUrls = new Set();
-  const imageUrls = new Set();
-  const thumbnailUrl = normaliseMediaUrl(raw.thumbnail);
-  const outboundUrl = extractOutboundUrl(raw, permalink);
-
-  const addMediaUrl = (value, options = {}) => {
-    const url = normaliseMediaUrl(value);
-    if (!url) return;
-    if (stripUrlQuery(url) === stripUrlQuery(permalink)) return;
-
-    mediaUrls.add(url);
-    if (options.image || isImageUrl(url)) imageUrls.add(url);
-  };
-
-  addMediaUrl(outboundUrl, { image: isImageUrl(outboundUrl) });
-  addPreview(raw.preview, addMediaUrl);
-  addMediaBlock(raw.media, addMediaUrl);
-  addMediaBlock(raw.secure_media, addMediaUrl);
-  addGallery(raw, addMediaUrl);
-
-  for (const crosspost of raw.crosspost_parent_list || []) {
-    const crosspostPermalink = normalisePermalink(crosspost.permalink || `/comments/${crosspost.id || ""}`);
-    const crosspostUrls = extractUrls(crosspost, crosspostPermalink);
-    for (const url of crosspostUrls.mediaUrls) mediaUrls.add(url);
-    for (const url of crosspostUrls.imageUrls) imageUrls.add(url);
-  }
-
-  return { mediaUrls: [...mediaUrls], imageUrls: [...imageUrls], outboundUrl, thumbnailUrl };
-}
-
-function extractOutboundUrl(raw, permalink) {
-  const directUrl = normaliseMediaUrl(raw.url_overridden_by_dest || raw.url);
-  if (!directUrl) return null;
-  return stripUrlQuery(directUrl) === stripUrlQuery(permalink) ? null : directUrl;
-}
-
-function addPreview(preview, addMediaUrl) {
-  for (const image of preview?.images || []) {
-    addMediaUrl(image.source?.url, { image: true });
-    for (const resolution of image.resolutions || []) addMediaUrl(resolution.url, { image: true });
-    for (const variant of Object.values(image.variants || {})) {
-      addMediaUrl(variant.source?.url, { image: true });
-      for (const resolution of variant.resolutions || []) addMediaUrl(resolution.url, { image: true });
-    }
-  }
-
-  addVideo(preview?.reddit_video_preview, addMediaUrl);
-}
-
-function addMediaBlock(media, addMediaUrl) {
-  addVideo(media?.reddit_video, addMediaUrl);
-  addMediaUrl(media?.oembed?.thumbnail_url);
-  addMediaUrl(media?.oembed?.url);
-}
-
-function addVideo(video, addMediaUrl) {
-  addMediaUrl(video?.fallback_url);
-  addMediaUrl(video?.scrubber_media_url);
-  addMediaUrl(video?.hls_url);
-  addMediaUrl(video?.dash_url);
-}
-
-function addGallery(raw, addMediaUrl) {
-  const mediaMetadata = raw.media_metadata || {};
-  const galleryItems = raw.gallery_data?.items || [];
-  const entries = galleryItems.length > 0
-    ? galleryItems.map((item) => [item.media_id, mediaMetadata[item.media_id]]).filter(([, metadata]) => metadata)
-    : Object.entries(mediaMetadata);
-
-  for (const [, metadata] of entries) {
-    addMediaMetadataImage(metadata?.s, addMediaUrl);
-    for (const preview of metadata?.p || []) addMediaMetadataImage(preview, addMediaUrl);
-    for (const original of metadata?.o || []) addMediaMetadataImage(original, addMediaUrl);
-  }
-}
-
-function addMediaMetadataImage(image, addMediaUrl) {
-  addMediaUrl(image?.u || image?.url, { image: true });
-  addMediaUrl(image?.gif, { image: true });
-  addMediaUrl(image?.mp4);
-}
-
-async function uploadPosts(crawl, posts, completed) {
-  return postJsonWithRetry(`${crawl.state.apiBase}/api/v1/extension/posts/stream`, {
-    sessionId: crawl.state.sessionId,
-    uploadToken: crawl.state.uploadToken,
+async function uploadPosts(state, posts, completed) {
+  return postJson(`${state.writerBase}/posts/stream`, {
+    sessionId: state.sessionId,
+    uploadToken: state.uploadToken,
     posts,
-    scrolls: crawl.latestScrolls,
-    linksSeen: crawl.latestLinksSeen,
     completed,
   });
 }
 
-async function postJsonWithRetry(url, body) {
-  let lastError = null;
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      return await postJson(url, body);
-    } catch (error) {
-      lastError = error;
-      await sleep(600 * (attempt + 1));
-    }
-  }
-
-  throw lastError || new Error(`Failed to POST ${url}`);
+async function getJson(url) {
+  const response = await fetch(url, { method: "GET" });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(json.error || `Request failed with ${response.status}`);
+  return json;
 }
 
 async function postJson(url, body) {
@@ -746,14 +957,14 @@ async function ensureInstallId() {
 }
 
 async function getConfig() {
-  const data = await chrome.storage.local.get({ [STORAGE_KEYS.apiBase]: DEFAULT_API_BASE });
-  return { apiBase: normaliseApiBase(data[STORAGE_KEYS.apiBase]) };
-}
+  const data = await chrome.storage.local.get({
+    [STORAGE_KEYS.config]: { writerBase: DEFAULT_WRITER_BASE },
+  });
 
-async function setConfig(config) {
-  const apiBase = normaliseApiBase(config.apiBase || DEFAULT_API_BASE);
-  await chrome.storage.local.set({ [STORAGE_KEYS.apiBase]: apiBase });
-  return { apiBase };
+  const config = data[STORAGE_KEYS.config] || {};
+  return {
+    writerBase: normaliseWriterBase(config.writerBase),
+  };
 }
 
 function stateKey(tabId) {
@@ -762,6 +973,7 @@ function stateKey(tabId) {
 
 async function getState(tabId) {
   if (!Number.isInteger(tabId)) return DEFAULT_STATE;
+
   const fallback = { ...DEFAULT_STATE, tabId };
   const data = await chrome.storage.local.get({ [stateKey(tabId)]: fallback });
   return data[stateKey(tabId)] || fallback;
@@ -772,13 +984,15 @@ async function setState(tabId, patch) {
 
   const current = await getState(tabId);
   const next = { ...current, ...patch, tabId };
+
   await chrome.storage.local.set({ [stateKey(tabId)]: next });
-  chrome.runtime.sendMessage({ type: "CRAWL_STATE", tabId, state: next }).catch(() => undefined);
+  chrome.runtime.sendMessage({ type: "CRAWL_STATE", tabId, state: next }).catch(() => {});
+
   return next;
 }
 
-function normaliseApiBase(value) {
-  return String(value || DEFAULT_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_API_BASE;
+function normaliseWriterBase(value) {
+  return String(value || DEFAULT_WRITER_BASE).replace(/\/+$/, "");
 }
 
 function isRedditUrl(value) {
@@ -788,70 +1002,4 @@ function isRedditUrl(value) {
   } catch {
     return false;
   }
-}
-
-function inferTargetFromUrl(value) {
-  try {
-    const url = new URL(value);
-    const user = url.pathname.match(/\/user\/([^/?#]+)/i)?.[1];
-    const subreddit = url.pathname.match(/\/r\/([^/?#]+)/i)?.[1];
-    if (user) return user.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20);
-    if (subreddit) return `r_${subreddit.replace(/[^A-Za-z0-9_]/g, "").slice(0, 48)}`;
-    if (url.pathname.match(/^\/new\/?$/i)) return "reddit_new";
-    return "reddit_home";
-  } catch {
-    return "pagecrawl";
-  }
-}
-
-function inferSubreddit(permalink) {
-  return permalink.match(/\/r\/([^/]+)\//i)?.[1] || null;
-}
-
-function normalisePermalink(value) {
-  if (/^https?:\/\//i.test(value)) return value;
-  return `https://www.reddit.com${value.startsWith("/") ? value : `/${value}`}`;
-}
-
-function normaliseMediaUrl(value) {
-  if (typeof value !== "string" || !value.trim()) return null;
-
-  const decoded = decodeHtmlEntities(value.trim());
-  const ignored = new Set(["default", "self", "nsfw", "spoiler", "image", ""]);
-  if (ignored.has(decoded.toLowerCase())) return null;
-  if (!/^https?:\/\//i.test(decoded)) return null;
-
-  return decoded;
-}
-
-function decodeHtmlEntities(value) {
-  return value
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&#x27;", "'");
-}
-
-function isImageUrl(value) {
-  if (!value) return false;
-  return (
-    /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value) ||
-    /\/\/(?:i|preview)\.redd\.it\//i.test(value) ||
-    /\/\/media\.redgifs\.com\/.+-poster\.(?:jpe?g|png|webp)/i.test(value)
-  );
-}
-
-function stripUrlQuery(value) {
-  try {
-    const url = new URL(value);
-    return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
-  } catch {
-    return String(value).replace(/[?#].*$/, "").replace(/\/$/, "");
-  }
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

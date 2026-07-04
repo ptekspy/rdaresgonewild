@@ -4,21 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="popup.css" />
-    <title>Paid Politely Reddit Stream Crawler</title>
+    <title>Paid Politely Local Reddit Crawler</title>
   </head>
   <body>
     <main class="shell">
       <header>
         <div>
           <p class="eyebrow">Paid Politely</p>
-          <h1>Reddit Stream Crawler</h1>
+          <h1>Local Reddit Crawler</h1>
         </div>
         <div id="statusDot" class="dot" aria-label="Status"></div>
       </header>
 
       <label>
-        API endpoint
-        <input id="apiBase" type="url" autocomplete="off" placeholder="https://api.paidpolitely.com" />
+        Local DB writer
+        <input id="writerBase" type="url" autocomplete="off" />
       </label>
 
       <div class="page-box">
@@ -32,12 +32,8 @@
           <small>scrolls</small>
         </div>
         <div>
-          <span id="links">0</span>
-          <small>links</small>
-        </div>
-        <div>
-          <span id="fetched">0</span>
-          <small>fetched</small>
+          <span id="parsed">0</span>
+          <small>parsed</small>
         </div>
         <div>
           <span id="saved">0</span>
@@ -48,12 +44,12 @@
       <p id="message" class="message">Ready.</p>
 
       <div class="actions">
-        <button id="start" type="button">Crawl current page</button>
+        <button id="start" type="button">Crawl page</button>
         <button id="stop" class="secondary" type="button">Stop</button>
       </div>
 
       <p class="hint">
-        Works on reddit home, /new, subreddit feeds, sort pages, search results, and user pages. Each tab/window gets its own crawl state.
+        Start <code>pnpm crawler:local-db</code> before crawling. This extension parses visible Reddit post cards directly; it does not visit each post.
       </p>
     </main>
 

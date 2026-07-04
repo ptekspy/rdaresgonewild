@@ -4,6 +4,7 @@
   "scripts": {
     "build": "pnpm db:generate && turbo build",
     "dev": "turbo dev",
+    "start": "turbo start",
     "dev:api": "pnpm --filter @paidpolitely/api dev",
     "dev:admin": "pnpm --filter @rdgw/admin dev",
     "tunnel:admin": "cloudflared tunnel run --url http://localhost:6790 paidpolitely-admin",
