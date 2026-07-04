@@ -13,7 +13,7 @@ pnpm dev:api
 The API runs at:
 
 ```text
-http://localhost:8787
+https://api.paidpolitely.com
 ```
 
 ## Main endpoints
@@ -49,7 +49,7 @@ Create a named tunnel and route `api.paidpolitely.com` to the local API:
 ```bash
 cloudflared tunnel create paidpolitely-api
 cloudflared tunnel route dns paidpolitely-api api.paidpolitely.com
-cloudflared tunnel run --url http://localhost:8787 paidpolitely-api
+cloudflared tunnel run --url https://api.paidpolitely.com paidpolitely-api
 ```
 
 For a persistent config, use a `cloudflared` config like:
@@ -60,7 +60,7 @@ credentials-file: /path/to/paidpolitely-api.json
 
 ingress:
   - hostname: api.paidpolitely.com
-    service: http://localhost:8787
+    service: https://api.paidpolitely.com
   - service: http_status:404
 ```
 

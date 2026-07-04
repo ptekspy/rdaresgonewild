@@ -14,7 +14,7 @@ This is a Manifest V3 Chrome extension that crawls the Reddit page the user is c
 Set the popup API endpoint to:
 
 ```text
-http://localhost:8787
+https://api.paidpolitely.com
 ```
 
 When the Cloudflare Tunnel is running, use:

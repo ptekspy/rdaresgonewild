@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = "http://localhost:8787";
+const DEFAULT_API_BASE = "https://api.paidpolitely.com";
 
 const DEFAULT_STATE = {
   status: "idle",

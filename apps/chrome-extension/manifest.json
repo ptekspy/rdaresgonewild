@@ -14,7 +14,7 @@
   "permissions": ["scripting", "storage", "tabs"],
   "host_permissions": [
     "https://*.reddit.com/*",
-    "http://localhost:8787/*",
+    "https://api.paidpolitely.com/*",
     "https://api.paidpolitely.com/*"
   ]
 }
