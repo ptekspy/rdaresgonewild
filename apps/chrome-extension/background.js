@@ -1,118 +1,97 @@
+const DEFAULT_API_BASE = "http://localhost:8787";
+
 const STORAGE_KEYS = {
-  installId: "installId",
-  statePrefix: "syncState:",
-  subredditCycleConfig: "subredditCycleConfig",
-  subredditCycleProgress: "subredditCycleProgress",
-  urlScanHistory: "urlScanHistory",
+  installId: "paidPolitely.installId",
+  apiBase: "paidPolitely.apiBase",
+  statePrefix: "paidPolitely.streamState:",
 };
 
 const DEFAULT_STATE = {
   status: "idle",
-  mode: "page",
-  username: "",
+  apiBase: DEFAULT_API_BASE,
+  pageUrl: "",
+  tabId: null,
   sessionId: "",
   uploadToken: "",
-  apiBase: "https://api.paidpolitely.com",
-  pageUrl: "",
-  pagesScanned: 0,
+  scrolls: 0,
+  linksSeen: 0,
+  linksQueued: 0,
+  postsFetched: 0,
   postsSynced: 0,
+  postsSkipped: 0,
   message: "Ready.",
-  tabId: null,
-  cyclePhase: "idle",
-  activeSubreddit: "",
-  activeSort: "",
-  completedUrls: 0,
-  skippedUrls: 0,
-  totalUrls: 0,
 };
 
-const FETCH_CONCURRENCY = 4;
-const UPLOAD_BATCH_SIZE = 25;
-const UPLOAD_FLUSH_MS = 2500;
-const SCAN_COOLDOWN_MS = 60 * 60 * 1000;
-const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const IDLE_CYCLE_WAIT_MS = 60 * 1000;
-const LOAD_SETTLE_MS = 2000;
+const FETCH_CONCURRENCY = 3;
+const STREAM_BATCH_SIZE = 10;
+const STREAM_FLUSH_MS = 1000;
+const DEFAULT_WAIT_MS = 1200;
+const DEFAULT_STABLE_ROUNDS = 14;
+const DEFAULT_MAX_SCROLLS = 1800;
 
-const INITIAL_SORTS = ["hot", "best", "new", "top"];
-const ONGOING_SORTS = ["new"];
+const crawlsByTabId = new Map();
+const crawlsById = new Map();
 
-const pipelinesByTabId = new Map();
-const pipelinesByCrawlId = new Map();
-const cyclesByTabId = new Map();
-
-chrome.runtime.onInstalled.addListener(async () => {
-  await ensureInstallId();
+chrome.runtime.onInstalled.addListener(() => {
+  ensureInstallId().catch(() => undefined);
 });
 
 chrome.runtime.onMessage.addListener((payload, _sender, sendResponse) => {
-  handleMessage(payload).then(sendResponse).catch((error) => {
-    sendResponse({ ...DEFAULT_STATE, status: "error", message: String(error?.message || error) });
-  });
+  handleMessage(payload)
+    .then(sendResponse)
+    .catch((error) => {
+      sendResponse({ ...DEFAULT_STATE, status: "error", message: String(error?.message || error) });
+    });
+
   return true;
 });
 
 async function handleMessage(payload) {
   const tabId = Number(payload?.tabId);
 
+  if (payload?.type === "GET_CONFIG") {
+    return getConfig();
+  }
+
+  if (payload?.type === "SAVE_CONFIG") {
+    return setConfig({ apiBase: payload.apiBase });
+  }
+
   if (payload?.type === "GET_STATE") {
     return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
   }
 
-  if (payload?.type === "GET_SUBREDDIT_CYCLE_CONFIG") {
-    return getSubredditCycleConfig();
-  }
-
-  if (payload?.type === "SAVE_SUBREDDIT_CYCLE_CONFIG") {
-    const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
-    const subreddits = parseSubredditList(payload.subreddits || []);
-    const config = await setSubredditCycleConfig({ apiBase, subreddits });
-    return { ok: true, config };
-  }
-
-  if (payload?.type === "START_PAGE_CRAWL") {
+  if (payload?.type === "START_CRAWL") {
     const pageUrl = String(payload.pageUrl || "");
-    const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
+    const apiBase = normaliseApiBase(payload.apiBase || DEFAULT_API_BASE);
 
     if (!Number.isInteger(tabId) || !isRedditUrl(pageUrl)) {
       return Number.isInteger(tabId)
-        ? setState(tabId, { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." })
-        : { ...DEFAULT_STATE, status: "error", message: "Open a Reddit page before crawling." };
+        ? setState(tabId, { ...DEFAULT_STATE, tabId, status: "error", message: "Open a reddit.com page first." })
+        : { ...DEFAULT_STATE, status: "error", message: "Open a reddit.com page first." };
     }
 
-    if (cyclesByTabId.has(tabId)) {
-      return setState(tabId, {
-        status: "error",
-        message: "This tab has a subreddit cycle running. Stop it before starting a page crawl.",
-      });
+    const existing = crawlsByTabId.get(tabId);
+    if (existing && !existing.finalising) {
+      return setState(tabId, { status: "error", message: "This tab already has a crawl running." });
     }
 
-    const existingPipeline = pipelinesByTabId.get(tabId);
-    if (existingPipeline && !existingPipeline.finalising) {
-      return setState(tabId, {
-        status: "error",
-        message: "This tab already has a crawl running. Stop it before starting another.",
-      });
-    }
+    await setConfig({ apiBase });
 
     const state = await setState(tabId, {
       ...DEFAULT_STATE,
       tabId,
-      status: "running",
-      mode: "page",
       apiBase,
       pageUrl,
-      username: inferUsernameFromUrl(pageUrl) || inferSubreddit(pageUrl) || "",
-      pagesScanned: 0,
-      postsSynced: 0,
-      message: "Starting concurrent scroll, parse, and upload...",
+      status: "running",
+      message: "Starting session...",
     });
 
-    runPageCrawl(tabId, state).catch(async (error) => {
-      const activePipeline = pipelinesByTabId.get(tabId);
-      if (activePipeline) {
-        activePipeline.stopRequested = true;
-        activePipeline.scrollComplete = true;
+    runCrawl(tabId, state).catch(async (error) => {
+      const crawl = crawlsByTabId.get(tabId);
+      if (crawl) {
+        crawl.stopRequested = true;
+        crawl.scrollComplete = true;
       }
 
       await setState(tabId, { status: "error", message: String(error?.message || error) });
@@ -121,368 +100,45 @@ async function handleMessage(payload) {
     return state;
   }
 
-  if (payload?.type === "START_SUBREDDIT_CYCLE") {
-    if (!Number.isInteger(tabId)) {
-      return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
-    }
+  if (payload?.type === "STOP_CRAWL") {
+    if (!Number.isInteger(tabId)) return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
 
-    const apiBase = String(payload.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, "");
-    const subreddits = parseSubredditList(payload.subreddits || []);
+    const crawl = crawlsByTabId.get(tabId);
+    if (!crawl) return setState(tabId, { status: "idle", message: "No crawl is running for this tab." });
 
-    if (subreddits.length === 0) {
-      return setState(tabId, {
-        ...DEFAULT_STATE,
-        tabId,
-        status: "error",
-        message: "Add at least one subreddit before starting the cycle.",
-      });
-    }
-
-    if (cyclesByTabId.has(tabId)) {
-      return setState(tabId, {
-        status: "error",
-        message: "This tab already has a subreddit cycle running.",
-      });
-    }
-
-    const existingPipeline = pipelinesByTabId.get(tabId);
-    if (existingPipeline && !existingPipeline.finalising) {
-      return setState(tabId, {
-        status: "error",
-        message: "This tab already has a crawl running. Stop it before starting the cycle.",
-      });
-    }
-
-    await setSubredditCycleConfig({ apiBase, subreddits });
-
-    const state = await setState(tabId, {
-      ...DEFAULT_STATE,
-      tabId,
-      status: "running",
-      mode: "cycle",
-      apiBase,
-      pageUrl: "",
-      username: "subreddit-cycle",
-      pagesScanned: 0,
-      postsSynced: 0,
-      cyclePhase: "starting",
-      completedUrls: 0,
-      skippedUrls: 0,
-      totalUrls: 0,
-      message: `Starting subreddit cycle for ${subreddits.length} subreddit${subreddits.length === 1 ? "" : "s"}...`,
-    });
-
-    runSubredditCycle(tabId, { apiBase, subreddits }).catch(async (error) => {
-      cyclesByTabId.delete(tabId);
-      await setState(tabId, { status: "error", message: String(error?.message || error) });
-    });
-
-    return state;
+    crawl.stopRequested = true;
+    await requestInjectedCrawlerStop(tabId);
+    return setState(tabId, { status: "running", message: "Stopping scroll and flushing queued posts..." });
   }
 
-  if (payload?.type === "STOP_SYNC") {
-    if (!Number.isInteger(tabId)) {
-      return { ...DEFAULT_STATE, status: "error", message: "Missing tab id." };
-    }
-
-    const cycle = cyclesByTabId.get(tabId);
-    if (cycle) {
-      cycle.stopRequested = true;
-      if (cycle.idleTimer) clearTimeout(cycle.idleTimer);
-    }
-
-    const pipeline = pipelinesByTabId.get(tabId);
-    if (pipeline) {
-      pipeline.stopRequested = true;
-      await requestPageCrawlerStop(tabId);
-      return setState(tabId, {
-        status: "running",
-        message: cycle
-          ? "Stopping subreddit cycle and finishing queued uploads..."
-          : "Stopping scroll and finishing queued uploads...",
-      });
-    }
-
-    if (cycle) {
-      cyclesByTabId.delete(tabId);
-      return setState(tabId, {
-        status: "idle",
-        message: "Subreddit cycle stopped.",
-      });
-    }
-
-    return setState(tabId, {
-      status: "idle",
-      message: "No crawl is running for this tab.",
-    });
-  }
-
-  if (payload?.type === "PAGE_CRAWL_LINKS") {
-    handlePageLinks(payload).catch(() => {});
+  if (payload?.type === "PAGE_LINKS") {
+    handlePageLinks(payload).catch(() => undefined);
     return { ok: true };
   }
 
-  if (payload?.type === "PAGE_CRAWL_DONE") {
-    handlePageDone(payload).catch(() => {});
+  if (payload?.type === "PAGE_DONE") {
+    handlePageDone(payload).catch(() => undefined);
     return { ok: true };
   }
 
-  if (payload?.type === "PAGE_CRAWL_ERROR") {
-    handlePageError(payload).catch(() => {});
+  if (payload?.type === "PAGE_ERROR") {
+    handlePageError(payload).catch(() => undefined);
     return { ok: true };
   }
 
   return Number.isInteger(tabId) ? getState(tabId) : DEFAULT_STATE;
 }
 
-async function runSubredditCycle(tabId, config) {
-  const subreddits = parseSubredditList(config.subreddits);
-  const fingerprint = subreddits.join("|").toLowerCase();
-  const progress = await getSubredditCycleProgress();
-  const initialAlreadyCompleted = progress.fingerprint === fingerprint && progress.initialCompleted === true;
-
-  const cycle = {
-    id: crypto.randomUUID(),
-    tabId,
-    apiBase: config.apiBase,
-    subreddits,
-    fingerprint,
-    stopRequested: false,
-    idleTimer: null,
-    completedUrls: 0,
-    skippedUrls: 0,
-    totalPostsSynced: 0,
-  };
-
-  cyclesByTabId.set(tabId, cycle);
-
-  try {
-    if (!initialAlreadyCompleted) {
-      const initialUrls = buildScanQueue(subreddits, INITIAL_SORTS);
-      await setState(tabId, {
-        status: "running",
-        mode: "cycle",
-        cyclePhase: "initial",
-        totalUrls: initialUrls.length,
-        completedUrls: 0,
-        skippedUrls: 0,
-        message: `Initial pass: scanning hot, best, new, and top for ${subreddits.length} subreddit${subreddits.length === 1 ? "" : "s"}.`,
-      });
-
-      await runScanQueue(cycle, initialUrls, "initial");
-
-      if (cycle.stopRequested) return;
-
-      await setSubredditCycleProgress({ fingerprint, initialCompleted: true, completedAt: Date.now() });
-      await setState(tabId, {
-        cyclePhase: "new",
-        message: "Initial pass complete. Switching to new-only cycle.",
-      });
-    }
-
-    while (!cycle.stopRequested) {
-      const newUrls = buildScanQueue(subreddits, ONGOING_SORTS);
-
-      await setState(tabId, {
-        status: "running",
-        mode: "cycle",
-        cyclePhase: "new",
-        totalUrls: newUrls.length,
-        completedUrls: 0,
-        skippedUrls: 0,
-        message: `New-only cycle: checking ${newUrls.length} subreddit URL${newUrls.length === 1 ? "" : "s"}.`,
-      });
-
-      cycle.completedUrls = 0;
-      cycle.skippedUrls = 0;
-      await runScanQueue(cycle, newUrls, "new");
-
-      if (cycle.stopRequested) return;
-
-      const scannedThisRound = cycle.completedUrls;
-      if (scannedThisRound <= 0) {
-        await setState(tabId, {
-          status: "running",
-          mode: "cycle",
-          cyclePhase: "waiting",
-          message: "All new URLs were scanned less than an hour ago. Waiting before checking again...",
-        });
-        await waitForCycleIdle(cycle, IDLE_CYCLE_WAIT_MS);
-      }
-    }
-  } finally {
-    if (cycle.idleTimer) clearTimeout(cycle.idleTimer);
-    cyclesByTabId.delete(tabId);
-
-    const current = await getState(tabId);
-    if (current.status === "running" || current.mode === "cycle") {
-      await setState(tabId, {
-        status: "idle",
-        mode: "cycle",
-        cyclePhase: "idle",
-        message: cycle.stopRequested ? "Subreddit cycle stopped." : "Subreddit cycle finished.",
-      });
-    }
-  }
-}
-
-async function runScanQueue(cycle, scanQueue, phase) {
-  const total = scanQueue.length;
-
-  for (let index = 0; index < scanQueue.length; index++) {
-    if (cycle.stopRequested) return;
-
-    const scan = scanQueue[index];
-    const cooldown = await getUrlCooldown(scan.url);
-
-    if (cooldown.remainingMs > 0) {
-      cycle.skippedUrls++;
-      await setState(cycle.tabId, {
-        mode: "cycle",
-        cyclePhase: phase,
-        activeSubreddit: scan.subreddit,
-        activeSort: scan.sort,
-        totalUrls: total,
-        completedUrls: cycle.completedUrls,
-        skippedUrls: cycle.skippedUrls,
-        message: `Skipping r/${scan.subreddit}/${scan.sort}; scanned ${formatDuration(cooldown.ageMs)} ago.`,
-      });
-      continue;
-    }
-
-    await setState(cycle.tabId, {
-      status: "running",
-      mode: "cycle",
-      cyclePhase: phase,
-      activeSubreddit: scan.subreddit,
-      activeSort: scan.sort,
-      totalUrls: total,
-      completedUrls: cycle.completedUrls,
-      skippedUrls: cycle.skippedUrls,
-      pageUrl: scan.url,
-      message: `${phase === "initial" ? "Initial pass" : "New-only cycle"}: opening r/${scan.subreddit}/${scan.sort} (${index + 1}/${total})...`,
-    });
-
-    await navigateTabAndWait(cycle.tabId, scan.url);
-
-    if (cycle.stopRequested) return;
-
-    const currentState = await getState(cycle.tabId);
-    const crawlState = {
-      ...currentState,
-      status: "running",
-      mode: "cycle",
-      apiBase: cycle.apiBase,
-      pageUrl: scan.url,
-      username: scan.subreddit,
-      activeSubreddit: scan.subreddit,
-      activeSort: scan.sort,
-      message: `Scanning r/${scan.subreddit}/${scan.sort}...`,
-    };
-
-    await setState(cycle.tabId, crawlState);
-
-    const result = await runPageCrawl(cycle.tabId, crawlState, {
-      postCountOffset: cycle.totalPostsSynced,
-      crawlerOptions: {
-        waitMs: 1500,
-        stableRounds: phase === "initial" ? 25 : 15,
-        maxScrolls: phase === "initial" ? 2500 : 600,
-      },
-    });
-
-    cycle.totalPostsSynced += result.postsReceived || 0;
-    cycle.completedUrls++;
-    await markUrlScanned(scan.url);
-
-    await setState(cycle.tabId, {
-      status: "running",
-      mode: "cycle",
-      cyclePhase: phase,
-      postsSynced: cycle.totalPostsSynced,
-      completedUrls: cycle.completedUrls,
-      skippedUrls: cycle.skippedUrls,
-      totalUrls: total,
-      message: `Finished r/${scan.subreddit}/${scan.sort}. Synced ${cycle.totalPostsSynced} posts this cycle.`,
-    });
-  }
-}
-
-function buildScanQueue(subreddits, sorts) {
-  const queue = [];
-
-  for (const subreddit of subreddits) {
-    for (const sort of sorts) {
-      queue.push({ subreddit, sort, url: buildSubredditUrl(subreddit, sort) });
-    }
-  }
-
-  return queue;
-}
-
-function buildSubredditUrl(subreddit, sort) {
-  const safeSubreddit = normaliseSubredditName(subreddit);
-  const safeSort = String(sort || "new").toLowerCase();
-
-  if (safeSort === "top") return `https://www.reddit.com/r/${safeSubreddit}/top/?t=all`;
-  return `https://www.reddit.com/r/${safeSubreddit}/${safeSort}/`;
-}
-
-async function navigateTabAndWait(tabId, url) {
-  await chrome.tabs.update(tabId, { url, active: true });
-  await waitForTabComplete(tabId, url, 45000);
-  await sleep(LOAD_SETTLE_MS);
-}
-
-function waitForTabComplete(tabId, expectedUrl, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timeout = setTimeout(() => finish(new Error(`Timed out loading ${expectedUrl}`)), timeoutMs);
-
-    function finish(error) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      chrome.tabs.onUpdated.removeListener(listener);
-      if (error) reject(error);
-      else resolve();
-    }
-
-    function listener(updatedTabId, changeInfo, tab) {
-      if (updatedTabId !== tabId) return;
-      if (changeInfo.status !== "complete") return;
-
-      const currentUrl = tab?.url || "";
-      if (isSameScanUrl(currentUrl, expectedUrl)) finish();
-    }
-
-    chrome.tabs.onUpdated.addListener(listener);
-
-    chrome.tabs.get(tabId, (tab) => {
-      if (chrome.runtime.lastError) return;
-      if (tab?.status === "complete" && isSameScanUrl(tab.url || "", expectedUrl)) finish();
-    });
-  });
-}
-
-function waitForCycleIdle(cycle, ms) {
-  return new Promise((resolve) => {
-    cycle.idleTimer = setTimeout(() => {
-      cycle.idleTimer = null;
-      resolve();
-    }, ms);
-  });
-}
-
-async function runPageCrawl(tabId, initialState, options = {}) {
-  let pipelineForThisRun = null;
+async function runCrawl(tabId, initialState) {
+  let crawl = null;
 
   try {
     const installId = await ensureInstallId();
+    const target = inferTargetFromUrl(initialState.pageUrl);
 
     const sessionResponse = await postJson(`${initialState.apiBase}/api/v1/extension/sessions`, {
-      crawlMode: initialState.mode === "cycle" ? "subreddit_cycle" : "page",
-      redditUsername: initialState.username || undefined,
+      crawlMode: "page",
+      redditUsername: target || undefined,
       sourceUrl: initialState.pageUrl,
       extensionInstallId: installId,
       clientVersion: chrome.runtime.getManifest().version,
@@ -492,40 +148,38 @@ async function runPageCrawl(tabId, initialState, options = {}) {
       ...initialState,
       sessionId: sessionResponse.session.id,
       uploadToken: sessionResponse.uploadToken,
-      message: initialState.mode === "cycle" ? initialState.message : "Scrolling, parsing, and uploading concurrently...",
+      message: "Scrolling Reddit and streaming posts as they are found...",
     });
 
-    pipelineForThisRun = createPipeline(tabId, state, options.postCountOffset || 0);
-    pipelinesByTabId.set(tabId, pipelineForThisRun);
-    pipelinesByCrawlId.set(pipelineForThisRun.id, pipelineForThisRun);
+    crawl = createCrawl(tabId, state);
+    crawlsByTabId.set(tabId, crawl);
+    crawlsById.set(crawl.id, crawl);
 
-    const crawlerOptions = options.crawlerOptions || {};
-    await startStreamingPageCrawler(tabId, {
-      crawlId: pipelineForThisRun.id,
-      waitMs: crawlerOptions.waitMs || 1500,
-      stableRounds: crawlerOptions.stableRounds || 25,
-      maxScrolls: crawlerOptions.maxScrolls || 2500,
+    await injectCrawler(tabId, {
+      crawlId: crawl.id,
+      waitMs: DEFAULT_WAIT_MS,
+      stableRounds: DEFAULT_STABLE_ROUNDS,
+      maxScrolls: DEFAULT_MAX_SCROLLS,
     });
 
     return await new Promise((resolve) => {
-      pipelineForThisRun.resolveComplete = resolve;
+      crawl.resolveComplete = resolve;
     });
   } finally {
-    if (pipelineForThisRun?.flushTimer) clearTimeout(pipelineForThisRun.flushTimer);
+    if (crawl?.flushTimer) clearTimeout(crawl.flushTimer);
 
-    if (pipelineForThisRun) {
-      pipelinesByCrawlId.delete(pipelineForThisRun.id);
-      if (pipelinesByTabId.get(tabId) === pipelineForThisRun) pipelinesByTabId.delete(tabId);
+    if (crawl) {
+      crawlsById.delete(crawl.id);
+      if (crawlsByTabId.get(tabId) === crawl) crawlsByTabId.delete(tabId);
     }
   }
 }
 
-function createPipeline(tabId, state, postCountOffset = 0) {
+function createCrawl(tabId, state) {
   return {
     id: crypto.randomUUID(),
     tabId,
     state,
-    postCountOffset,
     seenLinks: new Set(),
     linkQueue: [],
     postBatch: [],
@@ -534,298 +188,326 @@ function createPipeline(tabId, state, postCountOffset = 0) {
     scrollComplete: false,
     finalising: false,
     stopRequested: false,
-    skipped: 0,
     latestScrolls: 0,
-    latestPostsReceived: 0,
+    latestLinksSeen: 0,
+    postsFetched: 0,
+    postsSynced: 0,
+    skipped: 0,
     flushTimer: null,
-    resolveComplete: () => {},
+    resolveComplete: () => undefined,
   };
 }
 
-function getPipelineByCrawlId(crawlId) {
-  if (typeof crawlId !== "string") return null;
-  return pipelinesByCrawlId.get(crawlId) || null;
+function getCrawlById(crawlId) {
+  return typeof crawlId === "string" ? crawlsById.get(crawlId) || null : null;
 }
 
-function isActivePipeline(pipeline) {
-  return Boolean(
-    pipeline &&
-      pipelinesByCrawlId.get(pipeline.id) === pipeline &&
-      pipelinesByTabId.get(pipeline.tabId) === pipeline
-  );
+function isActiveCrawl(crawl) {
+  return Boolean(crawl && crawlsById.get(crawl.id) === crawl && crawlsByTabId.get(crawl.tabId) === crawl);
 }
 
 async function handlePageLinks(payload) {
-  const pipeline = getPipelineByCrawlId(payload.crawlId);
-  if (!isActivePipeline(pipeline) || pipeline.finalising) return;
+  const crawl = getCrawlById(payload.crawlId);
+  if (!isActiveCrawl(crawl) || crawl.finalising) return;
 
   const links = Array.isArray(payload.links) ? payload.links.filter((link) => typeof link === "string") : [];
-  const newLinks = [];
+  let newCount = 0;
 
   for (const link of links) {
-    if (pipeline.seenLinks.has(link)) continue;
-    pipeline.seenLinks.add(link);
-    pipeline.linkQueue.push(link);
-    newLinks.push(link);
+    if (crawl.seenLinks.has(link)) continue;
+    crawl.seenLinks.add(link);
+    crawl.linkQueue.push(link);
+    newCount++;
   }
 
-  pipeline.latestScrolls = Number(payload.scrolls) || pipeline.latestScrolls;
-  const currentMessage =
-    newLinks.length > 0
-      ? `Scrolling... found ${pipeline.seenLinks.size} links, queued ${pipeline.linkQueue.length}.`
-      : `Scrolling... parsed ${pipeline.seenLinks.size} links, uploading in parallel.`;
+  crawl.latestScrolls = Number(payload.scrolls) || crawl.latestScrolls;
+  crawl.latestLinksSeen = Math.max(crawl.latestLinksSeen, Number(payload.totalLinks) || crawl.seenLinks.size);
 
-  pipeline.state = await setState(pipeline.tabId, {
-    pagesScanned: pipeline.latestScrolls,
-    postsSynced: pipeline.postCountOffset + pipeline.latestPostsReceived,
-    message: pipeline.state.mode === "cycle" ? `${pipeline.state.activeSubreddit}/${pipeline.state.activeSort}: ${currentMessage}` : currentMessage,
+  crawl.state = await setState(crawl.tabId, {
+    scrolls: crawl.latestScrolls,
+    linksSeen: crawl.latestLinksSeen,
+    linksQueued: crawl.linkQueue.length,
+    postsFetched: crawl.postsFetched,
+    postsSynced: crawl.postsSynced,
+    postsSkipped: crawl.skipped,
+    message:
+      newCount > 0
+        ? `Found ${crawl.seenLinks.size} post links. Fetching and streaming...`
+        : `Scrolling... ${crawl.seenLinks.size} links seen, ${crawl.postsSynced} posts saved.`,
   });
 
-  pumpLinkQueue(pipeline);
-  maybeFinalizePipeline(pipeline);
+  pumpLinkQueue(crawl);
+  maybeFinaliseCrawl(crawl);
 }
 
 async function handlePageDone(payload) {
-  const pipeline = getPipelineByCrawlId(payload.crawlId);
-  if (!isActivePipeline(pipeline)) return;
+  const crawl = getCrawlById(payload.crawlId);
+  if (!isActiveCrawl(crawl)) return;
 
-  pipeline.scrollComplete = true;
-  pipeline.latestScrolls = Number(payload.scrolls) || pipeline.latestScrolls;
-  pipeline.state = await setState(pipeline.tabId, {
-    pagesScanned: pipeline.latestScrolls,
-    postsSynced: pipeline.postCountOffset + pipeline.latestPostsReceived,
-    message: "Reached the end of lazy loading. Finishing queued uploads...",
+  crawl.scrollComplete = true;
+  crawl.latestScrolls = Number(payload.scrolls) || crawl.latestScrolls;
+  crawl.latestLinksSeen = Math.max(crawl.latestLinksSeen, Number(payload.totalLinks) || crawl.seenLinks.size);
+
+  crawl.state = await setState(crawl.tabId, {
+    scrolls: crawl.latestScrolls,
+    linksSeen: crawl.latestLinksSeen,
+    linksQueued: crawl.linkQueue.length,
+    postsFetched: crawl.postsFetched,
+    postsSynced: crawl.postsSynced,
+    postsSkipped: crawl.skipped,
+    message: "Reached the lazy-load bottom. Finishing queued posts...",
   });
 
-  pumpLinkQueue(pipeline);
-  maybeFlushUpload(pipeline);
-  maybeFinalizePipeline(pipeline);
+  pumpLinkQueue(crawl);
+  maybeFlushUpload(crawl);
+  maybeFinaliseCrawl(crawl);
 }
 
 async function handlePageError(payload) {
-  const pipeline = getPipelineByCrawlId(payload.crawlId);
-  if (!isActivePipeline(pipeline)) return;
+  const crawl = getCrawlById(payload.crawlId);
+  if (!isActiveCrawl(crawl)) return;
 
-  pipeline.scrollComplete = true;
-  pipeline.stopRequested = true;
-  pipeline.state = await setState(pipeline.tabId, {
-    status: "error",
-    message: `Page crawler stopped: ${String(payload.error || "unknown error")}`,
-  });
-
-  maybeFinalizePipeline(pipeline);
+  crawl.scrollComplete = true;
+  crawl.stopRequested = true;
+  await setState(crawl.tabId, { status: "error", message: `Page crawler stopped: ${String(payload.error || "unknown error")}` });
+  maybeFinaliseCrawl(crawl);
 }
 
-function pumpLinkQueue(pipeline) {
-  if (!isActivePipeline(pipeline)) return;
+function pumpLinkQueue(crawl) {
+  if (!isActiveCrawl(crawl)) return;
 
-  while (pipeline.fetchInFlight < FETCH_CONCURRENCY && pipeline.linkQueue.length > 0 && !pipeline.stopRequested) {
-    const link = pipeline.linkQueue.shift();
-    pipeline.fetchInFlight++;
+  while (crawl.fetchInFlight < FETCH_CONCURRENCY && crawl.linkQueue.length > 0 && !crawl.stopRequested) {
+    const link = crawl.linkQueue.shift();
+    crawl.fetchInFlight++;
 
-    fetchAndQueuePost(pipeline, link)
+    fetchAndQueuePost(crawl, link)
       .catch(() => {
-        if (isActivePipeline(pipeline)) pipeline.skipped++;
+        if (isActiveCrawl(crawl)) crawl.skipped++;
       })
       .finally(() => {
-        if (!isActivePipeline(pipeline)) return;
-        pipeline.fetchInFlight--;
-        pumpLinkQueue(pipeline);
-        maybeFlushUpload(pipeline);
-        maybeFinalizePipeline(pipeline);
+        if (!isActiveCrawl(crawl)) return;
+        crawl.fetchInFlight--;
+        pumpLinkQueue(crawl);
+        maybeFlushUpload(crawl);
+        maybeFinaliseCrawl(crawl);
       });
   }
 }
 
-async function fetchAndQueuePost(pipeline, link) {
-  if (!isActivePipeline(pipeline) || pipeline.stopRequested) return;
+async function fetchAndQueuePost(crawl, link) {
+  if (!isActiveCrawl(crawl) || crawl.stopRequested) return;
 
   const rawPost = await fetchPostFromPermalink(link);
-  const normalised = normalisePost(rawPost);
-  if (!normalised || !isActivePipeline(pipeline)) return;
+  const normalised = normalisePost(rawPost, link);
+  if (!normalised || !isActiveCrawl(crawl)) return;
 
-  pipeline.postBatch.push(normalised);
+  crawl.postsFetched++;
+  crawl.postBatch.push(normalised);
 
-  if (pipeline.postBatch.length >= UPLOAD_BATCH_SIZE) maybeFlushUpload(pipeline);
-  else scheduleUploadFlush(pipeline);
+  crawl.state = await setState(crawl.tabId, {
+    postsFetched: crawl.postsFetched,
+    linksQueued: crawl.linkQueue.length,
+    postsSkipped: crawl.skipped,
+    message: `Fetched ${crawl.postsFetched}. Streaming ${crawl.postBatch.length} queued posts...`,
+  });
+
+  if (crawl.postBatch.length >= STREAM_BATCH_SIZE) maybeFlushUpload(crawl);
+  else scheduleUploadFlush(crawl);
 }
 
-function scheduleUploadFlush(pipeline) {
-  if (!isActivePipeline(pipeline) || pipeline.flushTimer || pipeline.postBatch.length === 0) return;
+function scheduleUploadFlush(crawl) {
+  if (!isActiveCrawl(crawl) || crawl.flushTimer || crawl.postBatch.length === 0) return;
 
-  pipeline.flushTimer = setTimeout(() => {
-    if (!isActivePipeline(pipeline)) return;
-    pipeline.flushTimer = null;
-    maybeFlushUpload(pipeline);
-  }, UPLOAD_FLUSH_MS);
+  crawl.flushTimer = setTimeout(() => {
+    if (!isActiveCrawl(crawl)) return;
+    crawl.flushTimer = null;
+    maybeFlushUpload(crawl);
+  }, STREAM_FLUSH_MS);
 }
 
-function maybeFlushUpload(pipeline) {
-  if (!isActivePipeline(pipeline) || pipeline.uploadInFlight || pipeline.postBatch.length === 0) return;
+function maybeFlushUpload(crawl) {
+  if (!isActiveCrawl(crawl) || crawl.uploadInFlight || crawl.postBatch.length === 0) return;
 
-  const posts = pipeline.postBatch.splice(0, UPLOAD_BATCH_SIZE);
-  pipeline.uploadInFlight = true;
+  const posts = crawl.postBatch.splice(0, STREAM_BATCH_SIZE);
+  crawl.uploadInFlight = true;
 
-  uploadBatch(pipeline.state, posts, false)
+  uploadPosts(crawl, posts, false)
     .then(async (upload) => {
-      if (!isActivePipeline(pipeline)) return;
-      pipeline.latestPostsReceived = Number(upload.session.postsReceived) || pipeline.latestPostsReceived;
-      pipeline.state = await setState(pipeline.tabId, {
-        postsSynced: pipeline.postCountOffset + pipeline.latestPostsReceived,
-        message: `Scrolling, parsing, uploading... synced ${pipeline.postCountOffset + pipeline.latestPostsReceived} posts.`,
+      if (!isActiveCrawl(crawl)) return;
+      crawl.postsSynced = Number(upload.session?.postsReceived) || crawl.postsSynced;
+      crawl.state = await setState(crawl.tabId, {
+        postsSynced: crawl.postsSynced,
+        linksQueued: crawl.linkQueue.length,
+        postsSkipped: crawl.skipped,
+        message: `Saved ${crawl.postsSynced} posts. Still scrolling/fetching in parallel...`,
       });
     })
     .catch(async (error) => {
-      if (!isActivePipeline(pipeline)) return;
-      pipeline.stopRequested = true;
-      pipeline.scrollComplete = true;
-      pipeline.state = await setState(pipeline.tabId, {
-        status: "error",
-        message: String(error?.message || error),
-      });
+      if (!isActiveCrawl(crawl)) return;
+      crawl.stopRequested = true;
+      crawl.scrollComplete = true;
+      await setState(crawl.tabId, { status: "error", message: String(error?.message || error) });
     })
     .finally(() => {
-      if (!isActivePipeline(pipeline)) return;
-      pipeline.uploadInFlight = false;
-      if (pipeline.postBatch.length > 0) maybeFlushUpload(pipeline);
-      maybeFinalizePipeline(pipeline);
+      if (!isActiveCrawl(crawl)) return;
+      crawl.uploadInFlight = false;
+      if (crawl.postBatch.length > 0) maybeFlushUpload(crawl);
+      maybeFinaliseCrawl(crawl);
     });
 }
 
-function maybeFinalizePipeline(pipeline) {
-  if (!isActivePipeline(pipeline) || pipeline.finalising) return;
-  if (!pipeline.scrollComplete && !pipeline.stopRequested) return;
-  if (pipeline.linkQueue.length > 0 || pipeline.fetchInFlight > 0 || pipeline.uploadInFlight) return;
+function maybeFinaliseCrawl(crawl) {
+  if (!isActiveCrawl(crawl) || crawl.finalising) return;
+  if (!crawl.scrollComplete && !crawl.stopRequested) return;
+  if (crawl.linkQueue.length > 0 || crawl.fetchInFlight > 0 || crawl.uploadInFlight) return;
 
-  pipeline.finalising = true;
+  crawl.finalising = true;
 
-  if (pipeline.flushTimer) {
-    clearTimeout(pipeline.flushTimer);
-    pipeline.flushTimer = null;
+  if (crawl.flushTimer) {
+    clearTimeout(crawl.flushTimer);
+    crawl.flushTimer = null;
   }
 
-  const posts = pipeline.postBatch.splice(0);
+  const finalPosts = crawl.postBatch.splice(0);
 
-  uploadBatch(pipeline.state, posts, true)
+  uploadPosts(crawl, finalPosts, true)
     .then(async (upload) => {
-      if (!isActivePipeline(pipeline)) return;
-      pipeline.latestPostsReceived = Number(upload.session.postsReceived) || pipeline.latestPostsReceived;
-      const totalPosts = pipeline.postCountOffset + pipeline.latestPostsReceived;
+      if (!isActiveCrawl(crawl)) return;
+      crawl.postsSynced = Number(upload.session?.postsReceived) || crawl.postsSynced;
 
-      await setState(pipeline.tabId, {
-        status: pipeline.state.mode === "cycle" ? "running" : pipeline.stopRequested ? "idle" : "completed",
-        pagesScanned: pipeline.latestScrolls,
-        postsSynced: totalPosts,
-        message: pipeline.stopRequested
-          ? `Stopped. Synced ${totalPosts} posts.`
-          : `Completed. Synced ${totalPosts} posts from ${pipeline.seenLinks.size} links${
-              pipeline.skipped ? `, skipped ${pipeline.skipped}` : ""
-            }.`,
+      const status = crawl.stopRequested ? "idle" : "completed";
+      const message = crawl.stopRequested
+        ? `Stopped. Saved ${crawl.postsSynced} posts, skipped ${crawl.skipped}.`
+        : `Completed. Saved ${crawl.postsSynced} posts from ${crawl.seenLinks.size} links${crawl.skipped ? `, skipped ${crawl.skipped}` : ""}.`;
+
+      await setState(crawl.tabId, {
+        status,
+        scrolls: crawl.latestScrolls,
+        linksSeen: crawl.latestLinksSeen,
+        linksQueued: 0,
+        postsFetched: crawl.postsFetched,
+        postsSynced: crawl.postsSynced,
+        postsSkipped: crawl.skipped,
+        message,
       });
 
-      pipeline.resolveComplete({
-        postsReceived: pipeline.latestPostsReceived,
-        totalPosts,
-        stopped: pipeline.stopRequested,
-      });
+      crawl.resolveComplete({ postsReceived: crawl.postsSynced, stopped: crawl.stopRequested });
     })
     .catch(async (error) => {
-      if (isActivePipeline(pipeline)) {
-        await setState(pipeline.tabId, { status: "error", message: String(error?.message || error) });
+      if (isActiveCrawl(crawl)) {
+        await setState(crawl.tabId, { status: "error", message: String(error?.message || error) });
       }
-      pipeline.resolveComplete({ postsReceived: pipeline.latestPostsReceived, totalPosts: pipeline.postCountOffset + pipeline.latestPostsReceived, error });
+      crawl.resolveComplete({ postsReceived: crawl.postsSynced, error });
     });
 }
 
-async function startStreamingPageCrawler(tabId, options) {
+async function injectCrawler(tabId, options) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    func: startConcurrentRedditCrawler,
+    func: startInjectedRedditCrawler,
     args: [options],
   });
 }
 
-async function requestPageCrawlerStop(tabId) {
+async function requestInjectedCrawlerStop(tabId) {
   await chrome.scripting
     .executeScript({
       target: { tabId },
       func: () => {
-        if (window.__paidPolitelyCrawler) window.__paidPolitelyCrawler.stopped = true;
+        if (window.__paidPolitelyStreamCrawler) window.__paidPolitelyStreamCrawler.stopped = true;
       },
     })
-    .catch(() => {});
+    .catch(() => undefined);
 }
 
-function startConcurrentRedditCrawler(options) {
+function startInjectedRedditCrawler(options) {
   const crawlId = options?.crawlId;
-  const waitMs = options?.waitMs || 900;
-  const stableRoundsTarget = options?.stableRounds || 10;
-  const maxScrolls = options?.maxScrolls || 500;
+  const waitMs = options?.waitMs || 1200;
+  const stableRoundsTarget = options?.stableRounds || 14;
+  const maxScrolls = options?.maxScrolls || 1800;
 
   if (!crawlId) {
-    chrome.runtime.sendMessage({ type: "PAGE_CRAWL_ERROR", error: "Missing crawl id" }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "PAGE_ERROR", error: "Missing crawl id" }).catch(() => undefined);
     return;
   }
 
-  if (window.__paidPolitelyCrawler) window.__paidPolitelyCrawler.stopped = true;
+  if (window.__paidPolitelyStreamCrawler) window.__paidPolitelyStreamCrawler.stopped = true;
 
   const crawler = {
     crawlId,
     stopped: false,
-    seen: new Set(),
+    seenPostIds: new Set(),
+    seenLinks: new Set(),
     scrolls: 0,
     stableRounds: 0,
     previousHeight: 0,
   };
 
-  window.__paidPolitelyCrawler = crawler;
+  window.__paidPolitelyStreamCrawler = crawler;
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function send(message) {
-    chrome.runtime.sendMessage({ crawlId, ...message }).catch(() => {});
+    chrome.runtime.sendMessage({ crawlId, ...message }).catch(() => undefined);
   }
 
   function collectNewLinks() {
     const links = [];
+    const candidates = [];
+
+    for (const post of document.querySelectorAll("shreddit-post")) {
+      candidates.push(post.getAttribute("permalink"));
+      candidates.push(post.getAttribute("content-href"));
+      candidates.push(post.getAttribute("href"));
+    }
+
+    for (const tracker of document.querySelectorAll('faceplate-tracker[source="post"] a[href*="/comments/"]')) {
+      candidates.push(tracker.href || tracker.getAttribute("href"));
+    }
 
     for (const anchor of document.querySelectorAll('a[href*="/comments/"]')) {
-      const href = anchor.href || anchor.getAttribute("href") || "";
-      const permalink = normalisePostHref(href);
-      if (!permalink || crawler.seen.has(permalink)) continue;
+      candidates.push(anchor.href || anchor.getAttribute("href"));
+    }
 
-      crawler.seen.add(permalink);
-      links.push(permalink);
+    for (const candidate of candidates) {
+      const normalised = normalisePostHref(candidate);
+      if (!normalised || crawler.seenLinks.has(normalised.href) || crawler.seenPostIds.has(normalised.id)) continue;
+
+      crawler.seenLinks.add(normalised.href);
+      crawler.seenPostIds.add(normalised.id);
+      links.push(normalised.href);
     }
 
     if (links.length > 0) {
       send({
-        type: "PAGE_CRAWL_LINKS",
+        type: "PAGE_LINKS",
         links,
         scrolls: crawler.scrolls,
-        totalLinks: crawler.seen.size,
+        totalLinks: crawler.seenLinks.size,
       });
     }
 
     return links.length;
   }
 
-  function normalisePostHref(href) {
-    try {
-      const url = new URL(href, location.href);
-      const host = url.hostname.toLowerCase();
-      if (!/(^|\.)reddit\.com$/.test(host)) return null;
+  function normalisePostHref(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
 
-      const match = url.pathname.match(/\/comments\/([a-z0-9]+)(?:\/[^/]+)?\/?/i);
+    try {
+      const url = new URL(value, location.href);
+      if (!/(^|\.)reddit\.com$/i.test(url.hostname)) return null;
+
+      const match = url.pathname.match(/(?:\/r\/([^/]+))?\/comments\/([a-z0-9]+)(?:\/([^/?#]+))?/i);
       if (!match) return null;
 
-      const parts = url.pathname.split("/").filter(Boolean);
-      const commentsIndex = parts.findIndex((part) => part.toLowerCase() === "comments");
-      const subredditIndex = parts.findIndex((part) => part.toLowerCase() === "r");
-      const subreddit = subredditIndex >= 0 ? `/${parts[subredditIndex]}/${parts[subredditIndex + 1]}` : "";
-      const slug = parts[commentsIndex + 2] ? `/${parts[commentsIndex + 2]}` : "";
+      const subreddit = match[1] ? `/r/${match[1]}` : "";
+      const postId = match[2].toLowerCase();
+      const slug = match[3] ? `/${match[3]}` : "";
 
-      return `https://www.reddit.com${subreddit}/comments/${match[1]}${slug}/`;
+      return {
+        id: postId,
+        href: `https://www.reddit.com${subreddit}/comments/${postId}${slug}/`,
+      };
     } catch {
       return null;
     }
@@ -836,34 +518,34 @@ function startConcurrentRedditCrawler(options) {
       collectNewLinks();
 
       while (!crawler.stopped && crawler.scrolls < maxScrolls && crawler.stableRounds < stableRoundsTarget) {
-        const beforeLinks = crawler.seen.size;
+        const beforeLinks = crawler.seenLinks.size;
         const beforeHeight = document.documentElement.scrollHeight;
 
         window.scrollTo({ top: beforeHeight, behavior: "auto" });
         await sleep(waitMs);
         collectNewLinks();
 
-        window.scrollBy({ top: Math.max(400, Math.round(window.innerHeight * 0.9)), behavior: "auto" });
+        window.scrollBy({ top: Math.max(500, Math.round(window.innerHeight * 0.95)), behavior: "auto" });
         await sleep(waitMs);
 
-        const newLinkCount = collectNewLinks();
+        const newLinks = collectNewLinks();
         crawler.scrolls++;
 
         const afterHeight = document.documentElement.scrollHeight;
-        const atBottom = Math.ceil(window.scrollY + window.innerHeight) >= afterHeight - 4;
+        const atBottom = Math.ceil(window.scrollY + window.innerHeight) >= afterHeight - 8;
         const noNewHeight = afterHeight === beforeHeight && afterHeight === crawler.previousHeight;
-        const noNewLinks = crawler.seen.size === beforeLinks && newLinkCount === 0;
+        const noNewLinks = crawler.seenLinks.size === beforeLinks && newLinks === 0;
 
         crawler.stableRounds = atBottom && noNewHeight && noNewLinks ? crawler.stableRounds + 1 : 0;
         crawler.previousHeight = afterHeight;
 
-        send({ type: "PAGE_CRAWL_LINKS", links: [], scrolls: crawler.scrolls, totalLinks: crawler.seen.size });
+        send({ type: "PAGE_LINKS", links: [], scrolls: crawler.scrolls, totalLinks: crawler.seenLinks.size });
       }
 
       collectNewLinks();
-      send({ type: "PAGE_CRAWL_DONE", scrolls: crawler.scrolls, totalLinks: crawler.seen.size, stopped: crawler.stopped });
+      send({ type: "PAGE_DONE", scrolls: crawler.scrolls, totalLinks: crawler.seenLinks.size, stopped: crawler.stopped });
     } catch (error) {
-      send({ type: "PAGE_CRAWL_ERROR", error: String(error?.message || error) });
+      send({ type: "PAGE_ERROR", error: String(error?.message || error) });
     }
   }
 
@@ -872,48 +554,57 @@ function startConcurrentRedditCrawler(options) {
 
 async function fetchPostFromPermalink(permalink) {
   const url = `${permalink.replace(/\/$/, "")}.json?raw_json=1`;
-  const response = await fetch(url, { credentials: "include", headers: { accept: "application/json" } });
+  let lastError = null;
 
-  if (!response.ok) throw new Error(`Reddit returned ${response.status} for ${permalink}`);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, {
+        credentials: "include",
+        headers: { accept: "application/json" },
+      });
 
-  const listing = await response.json();
-  const raw = listing?.[0]?.data?.children?.[0]?.data;
-  if (!raw?.id) throw new Error(`Could not parse Reddit post JSON for ${permalink}`);
+      if (response.status === 429 || response.status >= 500) {
+        await sleep(750 * (attempt + 1));
+        continue;
+      }
 
-  return raw;
+      if (!response.ok) throw new Error(`Reddit returned ${response.status} for ${permalink}`);
+
+      const listing = await response.json();
+      const raw = listing?.[0]?.data?.children?.[0]?.data;
+      if (!raw?.id) throw new Error(`Could not parse Reddit post JSON for ${permalink}`);
+
+      return raw;
+    } catch (error) {
+      lastError = error;
+      await sleep(500 * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error(`Failed to fetch ${permalink}`);
 }
 
-async function uploadBatch(state, posts, completed) {
-  return postJson(`${state.apiBase}/api/v1/extension/posts/batch`, {
-    sessionId: state.sessionId,
-    uploadToken: state.uploadToken,
-    posts,
-    nextCursor: null,
-    completed,
-  });
-}
-
-function normalisePost(raw) {
+function normalisePost(raw, fallbackPermalink) {
   if (!raw?.id || !raw?.name || !raw?.title || !raw?.author || !raw?.created_utc) return null;
   if (raw.author === "[deleted]") return null;
 
-  const permalink = normalisePermalink(raw.permalink || `/comments/${raw.id}`);
+  const permalink = normalisePermalink(raw.permalink || fallbackPermalink || `/comments/${raw.id}`);
   const urls = extractUrls(raw, permalink);
 
   return {
     id: raw.id,
     name: raw.name,
-    subreddit: raw.subreddit || inferSubreddit(permalink) || "",
+    subreddit: raw.subreddit || inferSubreddit(permalink) || "unknown",
     title: raw.title,
     selftext: raw.selftext || "",
     author: raw.author,
     link_flair_text: raw.link_flair_text || null,
-    score: raw.score || 0,
+    score: typeof raw.score === "number" ? raw.score : 0,
     upvoteCount: typeof raw.ups === "number" ? raw.ups : null,
     upvote_ratio: typeof raw.upvote_ratio === "number" ? raw.upvote_ratio : null,
-    num_comments: raw.num_comments || 0,
+    num_comments: typeof raw.num_comments === "number" ? raw.num_comments : 0,
     shareCount: typeof raw.share_count === "number" ? raw.share_count : null,
-    crosspostCount: raw.num_crossposts || 0,
+    crosspostCount: typeof raw.num_crossposts === "number" ? raw.num_crossposts : 0,
     mediaUrls: urls.mediaUrls,
     imageUrls: urls.imageUrls,
     outboundUrl: urls.outboundUrl,
@@ -927,7 +618,6 @@ function normalisePost(raw) {
 function extractUrls(raw, permalink) {
   const mediaUrls = new Set();
   const imageUrls = new Set();
-
   const thumbnailUrl = normaliseMediaUrl(raw.thumbnail);
   const outboundUrl = extractOutboundUrl(raw, permalink);
 
@@ -937,7 +627,6 @@ function extractUrls(raw, permalink) {
     if (stripUrlQuery(url) === stripUrlQuery(permalink)) return;
 
     mediaUrls.add(url);
-
     if (options.image || isImageUrl(url)) imageUrls.add(url);
   };
 
@@ -950,7 +639,6 @@ function extractUrls(raw, permalink) {
   for (const crosspost of raw.crosspost_parent_list || []) {
     const crosspostPermalink = normalisePermalink(crosspost.permalink || `/comments/${crosspost.id || ""}`);
     const crosspostUrls = extractUrls(crosspost, crosspostPermalink);
-
     for (const url of crosspostUrls.mediaUrls) mediaUrls.add(url);
     for (const url of crosspostUrls.imageUrls) imageUrls.add(url);
   }
@@ -967,9 +655,7 @@ function extractOutboundUrl(raw, permalink) {
 function addPreview(preview, addMediaUrl) {
   for (const image of preview?.images || []) {
     addMediaUrl(image.source?.url, { image: true });
-
     for (const resolution of image.resolutions || []) addMediaUrl(resolution.url, { image: true });
-
     for (const variant of Object.values(image.variants || {})) {
       addMediaUrl(variant.source?.url, { image: true });
       for (const resolution of variant.resolutions || []) addMediaUrl(resolution.url, { image: true });
@@ -995,10 +681,9 @@ function addVideo(video, addMediaUrl) {
 function addGallery(raw, addMediaUrl) {
   const mediaMetadata = raw.media_metadata || {};
   const galleryItems = raw.gallery_data?.items || [];
-  const entries =
-    galleryItems.length > 0
-      ? galleryItems.map((item) => [item.media_id, mediaMetadata[item.media_id]]).filter(([, metadata]) => metadata)
-      : Object.entries(mediaMetadata);
+  const entries = galleryItems.length > 0
+    ? galleryItems.map((item) => [item.media_id, mediaMetadata[item.media_id]]).filter(([, metadata]) => metadata)
+    : Object.entries(mediaMetadata);
 
   for (const [, metadata] of entries) {
     addMediaMetadataImage(metadata?.s, addMediaUrl);
@@ -1011,6 +696,112 @@ function addMediaMetadataImage(image, addMediaUrl) {
   addMediaUrl(image?.u || image?.url, { image: true });
   addMediaUrl(image?.gif, { image: true });
   addMediaUrl(image?.mp4);
+}
+
+async function uploadPosts(crawl, posts, completed) {
+  return postJsonWithRetry(`${crawl.state.apiBase}/api/v1/extension/posts/stream`, {
+    sessionId: crawl.state.sessionId,
+    uploadToken: crawl.state.uploadToken,
+    posts,
+    scrolls: crawl.latestScrolls,
+    linksSeen: crawl.latestLinksSeen,
+    completed,
+  });
+}
+
+async function postJsonWithRetry(url, body) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await postJson(url, body);
+    } catch (error) {
+      lastError = error;
+      await sleep(600 * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error(`Failed to POST ${url}`);
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(json.error || `Request failed with ${response.status}`);
+  return json;
+}
+
+async function ensureInstallId() {
+  const existing = await chrome.storage.local.get(STORAGE_KEYS.installId);
+  if (existing[STORAGE_KEYS.installId]) return existing[STORAGE_KEYS.installId];
+
+  const installId = crypto.randomUUID();
+  await chrome.storage.local.set({ [STORAGE_KEYS.installId]: installId });
+  return installId;
+}
+
+async function getConfig() {
+  const data = await chrome.storage.local.get({ [STORAGE_KEYS.apiBase]: DEFAULT_API_BASE });
+  return { apiBase: normaliseApiBase(data[STORAGE_KEYS.apiBase]) };
+}
+
+async function setConfig(config) {
+  const apiBase = normaliseApiBase(config.apiBase || DEFAULT_API_BASE);
+  await chrome.storage.local.set({ [STORAGE_KEYS.apiBase]: apiBase });
+  return { apiBase };
+}
+
+function stateKey(tabId) {
+  return `${STORAGE_KEYS.statePrefix}${tabId}`;
+}
+
+async function getState(tabId) {
+  if (!Number.isInteger(tabId)) return DEFAULT_STATE;
+  const fallback = { ...DEFAULT_STATE, tabId };
+  const data = await chrome.storage.local.get({ [stateKey(tabId)]: fallback });
+  return data[stateKey(tabId)] || fallback;
+}
+
+async function setState(tabId, patch) {
+  if (!Number.isInteger(tabId)) return { ...DEFAULT_STATE, ...patch };
+
+  const current = await getState(tabId);
+  const next = { ...current, ...patch, tabId };
+  await chrome.storage.local.set({ [stateKey(tabId)]: next });
+  chrome.runtime.sendMessage({ type: "CRAWL_STATE", tabId, state: next }).catch(() => undefined);
+  return next;
+}
+
+function normaliseApiBase(value) {
+  return String(value || DEFAULT_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_API_BASE;
+}
+
+function isRedditUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && /(^|\.)reddit\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function inferTargetFromUrl(value) {
+  try {
+    const url = new URL(value);
+    const user = url.pathname.match(/\/user\/([^/?#]+)/i)?.[1];
+    const subreddit = url.pathname.match(/\/r\/([^/?#]+)/i)?.[1];
+    if (user) return user.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20);
+    if (subreddit) return `r_${subreddit.replace(/[^A-Za-z0-9_]/g, "").slice(0, 48)}`;
+    if (url.pathname.match(/^\/new\/?$/i)) return "reddit_new";
+    return "reddit_home";
+  } catch {
+    return "pagecrawl";
+  }
 }
 
 function inferSubreddit(permalink) {
@@ -1027,7 +818,6 @@ function normaliseMediaUrl(value) {
 
   const decoded = decodeHtmlEntities(value.trim());
   const ignored = new Set(["default", "self", "nsfw", "spoiler", "image", ""]);
-
   if (ignored.has(decoded.toLowerCase())) return null;
   if (!/^https?:\/\//i.test(decoded)) return null;
 
@@ -1046,7 +836,6 @@ function decodeHtmlEntities(value) {
 
 function isImageUrl(value) {
   if (!value) return false;
-
   return (
     /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(value) ||
     /\/\/(?:i|preview)\.redd\.it\//i.test(value) ||
@@ -1063,197 +852,6 @@ function stripUrlQuery(value) {
   }
 }
 
-async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(json.error || `Request failed with ${response.status}`);
-  return json;
-}
-
-async function ensureInstallId() {
-  const existing = await chrome.storage.local.get(STORAGE_KEYS.installId);
-  if (existing.installId) return existing.installId;
-
-  const installId = crypto.randomUUID();
-  await chrome.storage.local.set({ [STORAGE_KEYS.installId]: installId });
-  return installId;
-}
-
-function stateKey(tabId) {
-  return `${STORAGE_KEYS.statePrefix}${tabId}`;
-}
-
-async function getState(tabId) {
-  if (!Number.isInteger(tabId)) return DEFAULT_STATE;
-
-  const fallback = { ...DEFAULT_STATE, tabId };
-  const data = await chrome.storage.local.get({ [stateKey(tabId)]: fallback });
-  return data[stateKey(tabId)] || fallback;
-}
-
-async function setState(tabId, patch) {
-  if (!Number.isInteger(tabId)) return { ...DEFAULT_STATE, ...patch };
-
-  const current = await getState(tabId);
-  const next = { ...current, ...patch, tabId };
-
-  await chrome.storage.local.set({ [stateKey(tabId)]: next });
-  chrome.runtime.sendMessage({ type: "SYNC_STATE", tabId, state: next }).catch(() => {});
-
-  return next;
-}
-
-async function getSubredditCycleConfig() {
-  const data = await chrome.storage.local.get({
-    [STORAGE_KEYS.subredditCycleConfig]: {
-      apiBase: DEFAULT_STATE.apiBase,
-      subreddits: ["daresgonewild"],
-    },
-  });
-
-  const config = data[STORAGE_KEYS.subredditCycleConfig] || {};
-  return {
-    apiBase: String(config.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, ""),
-    subreddits: parseSubredditList(config.subreddits || ["daresgonewild"]),
-  };
-}
-
-async function setSubredditCycleConfig(config) {
-  const next = {
-    apiBase: String(config.apiBase || DEFAULT_STATE.apiBase).replace(/\/+$/, ""),
-    subreddits: parseSubredditList(config.subreddits),
-  };
-
-  await chrome.storage.local.set({ [STORAGE_KEYS.subredditCycleConfig]: next });
-  return next;
-}
-
-async function getSubredditCycleProgress() {
-  const data = await chrome.storage.local.get({ [STORAGE_KEYS.subredditCycleProgress]: {} });
-  return data[STORAGE_KEYS.subredditCycleProgress] || {};
-}
-
-async function setSubredditCycleProgress(progress) {
-  await chrome.storage.local.set({ [STORAGE_KEYS.subredditCycleProgress]: progress });
-  return progress;
-}
-
-async function getUrlScanHistory() {
-  const data = await chrome.storage.local.get({ [STORAGE_KEYS.urlScanHistory]: {} });
-  const history = data[STORAGE_KEYS.urlScanHistory] || {};
-  const now = Date.now();
-  let changed = false;
-
-  for (const [url, timestamp] of Object.entries(history)) {
-    if (typeof timestamp !== "number" || now - timestamp > HISTORY_RETENTION_MS) {
-      delete history[url];
-      changed = true;
-    }
-  }
-
-  if (changed) await chrome.storage.local.set({ [STORAGE_KEYS.urlScanHistory]: history });
-  return history;
-}
-
-async function getUrlCooldown(url) {
-  const history = await getUrlScanHistory();
-  const key = normaliseScanUrl(url);
-  const lastScannedAt = Number(history[key] || 0);
-  const ageMs = lastScannedAt ? Date.now() - lastScannedAt : Infinity;
-  const remainingMs = Math.max(0, SCAN_COOLDOWN_MS - ageMs);
-
-  return { lastScannedAt, ageMs, remainingMs };
-}
-
-async function markUrlScanned(url) {
-  const history = await getUrlScanHistory();
-  history[normaliseScanUrl(url)] = Date.now();
-  await chrome.storage.local.set({ [STORAGE_KEYS.urlScanHistory]: history });
-}
-
-function normaliseScanUrl(value) {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    url.hostname = url.hostname.toLowerCase();
-    url.pathname = url.pathname.replace(/\/+$/, "/");
-
-    const params = [...url.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
-    url.search = "";
-    for (const [key, val] of params) url.searchParams.append(key, val);
-
-    return url.toString();
-  } catch {
-    return String(value).trim();
-  }
-}
-
-function isSameScanUrl(a, b) {
-  return stripUrlQuery(normaliseScanUrl(a)) === stripUrlQuery(normaliseScanUrl(b));
-}
-
-function parseSubredditList(value) {
-  const raw = Array.isArray(value) ? value.join("\n") : String(value || "");
-  const seen = new Set();
-  const subreddits = [];
-
-  for (const part of raw.split(/[\n,\s]+/g)) {
-    const subreddit = normaliseSubredditName(part);
-    if (!subreddit) continue;
-
-    const key = subreddit.toLowerCase();
-    if (seen.has(key)) continue;
-
-    seen.add(key);
-    subreddits.push(subreddit);
-  }
-
-  return subreddits;
-}
-
-function normaliseSubredditName(value) {
-  const cleaned = String(value || "")
-    .trim()
-    .replace(/^https?:\/\/(?:www\.)?reddit\.com\/r\//i, "")
-    .replace(/^\/r\//i, "")
-    .replace(/^r\//i, "")
-    .replace(/[/?#].*$/, "")
-    .replace(/[^A-Za-z0-9_]/g, "");
-
-  return cleaned || "";
-}
-
-function isRedditUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && /(^|\.)reddit\.com$/i.test(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
-function inferUsernameFromUrl(value) {
-  try {
-    return new URL(value).pathname.match(/\/user\/([^/?#]+)/i)?.[1] || "";
-  } catch {
-    return "";
-  }
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function formatDuration(ms) {
-  if (!Number.isFinite(ms)) return "never";
-  const minutes = Math.max(1, Math.round(ms / 60000));
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }

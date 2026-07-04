@@ -4,21 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="popup.css" />
-    <title>Paid Politely Reddit Sync</title>
+    <title>Paid Politely Reddit Stream Crawler</title>
   </head>
   <body>
     <main class="shell">
       <header>
         <div>
           <p class="eyebrow">Paid Politely</p>
-          <h1>Reddit Sync</h1>
+          <h1>Reddit Stream Crawler</h1>
         </div>
         <div id="statusDot" class="dot" aria-label="Status"></div>
       </header>
 
       <label>
         API endpoint
-        <input id="apiBase" type="url" autocomplete="off" />
+        <input id="apiBase" type="url" autocomplete="off" placeholder="http://localhost:8787" />
       </label>
 
       <div class="page-box">
@@ -26,37 +26,35 @@
         <span id="pageUrl">Open a Reddit page to crawl it.</span>
       </div>
 
-      <label>
-        Subreddits to cycle
-        <textarea id="subreddits" rows="5" spellcheck="false" placeholder="daresgonewild&#10;progresspics"></textarea>
-      </label>
-
-      <p class="hint">
-        Cycle mode scans hot, best, new, and top once for every subreddit. After that it only scans new. Each exact subreddit URL is limited to once per hour.
-      </p>
-
       <section class="stats" aria-live="polite">
         <div>
-          <span id="pages">0</span>
+          <span id="scrolls">0</span>
           <small>scrolls</small>
         </div>
         <div>
-          <span id="posts">0</span>
-          <small>posts</small>
+          <span id="links">0</span>
+          <small>links</small>
         </div>
         <div>
-          <span id="urlsDone">0</span>
-          <small>urls</small>
+          <span id="fetched">0</span>
+          <small>fetched</small>
+        </div>
+        <div>
+          <span id="saved">0</span>
+          <small>saved</small>
         </div>
       </section>
 
       <p id="message" class="message">Ready.</p>
 
       <div class="actions">
-        <button id="start" type="button">Crawl page</button>
-        <button id="startCycle" type="button">Start cycle</button>
+        <button id="start" type="button">Crawl current page</button>
         <button id="stop" class="secondary" type="button">Stop</button>
       </div>
+
+      <p class="hint">
+        Works on reddit home, /new, subreddit feeds, sort pages, search results, and user pages. Each tab/window gets its own crawl state.
+      </p>
     </main>
 
     <script src="popup.js"></script>

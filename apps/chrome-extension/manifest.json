@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Paid Politely Reddit Sync",
-  "description": "Crawl Reddit pages and subreddit cycles, then sync post details to Paid Politely.",
-  "version": "0.2.5",
+  "name": "Paid Politely Reddit Stream Crawler",
+  "description": "Streams Reddit post data into the Paid Politely API while the page lazy-loads.",
+  "version": "0.3.0",
   "action": {
-    "default_title": "Paid Politely Reddit Sync",
+    "default_title": "Paid Politely Reddit Stream Crawler",
     "default_popup": "popup.html"
   },
   "background": {
@@ -14,7 +14,7 @@
   "permissions": ["scripting", "storage", "tabs"],
   "host_permissions": [
     "https://*.reddit.com/*",
-    "https://api.paidpolitely.com/*",
-    "http://localhost:8787/*"
+    "http://localhost:8787/*",
+    "https://api.paidpolitely.com/*"
   ]
 }
