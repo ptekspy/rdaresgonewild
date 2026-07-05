@@ -757,7 +757,7 @@ async function scrollPage(tabId: number) {
     target: { tabId },
     func: () => {
       window.scrollBy({
-        top: Math.max(window.innerHeight * 0.95, 900),
+        top: Math.max(window.innerHeight * 3, 30000),
         behavior: "smooth",
       });
     },
