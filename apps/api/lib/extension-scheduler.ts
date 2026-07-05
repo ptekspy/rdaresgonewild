@@ -153,11 +153,20 @@ export function loadExtensionTargetsConfig(): ExtensionTargetsConfig {
   }
 }
 
-export async function claimNextExtensionTask() {
-  await ensureExtensionDueJobs();
+export interface ClaimNextExtensionTaskOptions {
+  forceMainQueue?: boolean;
+}
+
+export async function claimNextExtensionTask(options: ClaimNextExtensionTaskOptions = {}) {
+  if (options.forceMainQueue) {
+    await recoverExpiredExtensionJobs();
+    await queueCoreBootstrapJobs();
+  } else {
+    await ensureExtensionDueJobs();
+  }
 
   let job = await claimQueuedExtensionJob();
-  if (!job) {
+  if (!job && !options.forceMainQueue) {
     await queueFallbackUserJobs();
     job = await claimQueuedExtensionJob();
   }
@@ -373,6 +382,54 @@ async function ensureExtensionDueJobs() {
   }
 }
 
+async function queueCoreBootstrapJobs() {
+  const config = loadExtensionTargetsConfig();
+  const now = new Date();
+  const definitions: ExtensionJobDefinition[] = [];
+
+  for (const sort of config.homeSorts) {
+    definitions.push(buildHomeJob(sort, config));
+  }
+
+  for (const subreddit of uniqueSubreddits(config.coreSubreddits)) {
+    for (const sort of config.coreSorts) {
+      definitions.push(buildSubredditJob(subreddit, sort, true, config));
+    }
+  }
+
+  for (const definition of definitions) {
+    await forceQueueExtensionJob(definition, now);
+  }
+}
+
+async function forceQueueExtensionJob(definition: ExtensionJobDefinition, scheduledFor: Date) {
+  await prisma.browserCrawlJob.upsert({
+    where: { dedupeKey: definition.dedupeKey },
+    create: {
+      dedupeKey: definition.dedupeKey,
+      type: definition.type,
+      target: definition.target,
+      url: definition.url,
+      status: "queued",
+      priority: definition.priority,
+      scheduledFor,
+      state: definition.state,
+    },
+    update: {
+      type: definition.type,
+      target: definition.target,
+      url: definition.url,
+      status: "queued",
+      priority: definition.priority,
+      scheduledFor,
+      startedAt: null,
+      completedAt: null,
+      leaseUntil: null,
+      lastError: null,
+      state: definition.state,
+    },
+  });
+}
 async function recoverExpiredExtensionJobs() {
   await prisma.browserCrawlJob.updateMany({
     where: {

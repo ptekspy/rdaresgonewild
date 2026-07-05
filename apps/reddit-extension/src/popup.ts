@@ -1,12 +1,23 @@
 export {};
+
 const statusElement = document.querySelector<HTMLElement>("#status");
 const lastTaskElement = document.querySelector<HTMLElement>("#lastTask");
+const forceMainQueueInput = document.querySelector<HTMLInputElement>("#forceMainQueue");
 const runNowButton = document.querySelector<HTMLButtonElement>("#runNow");
 const optionsButton = document.querySelector<HTMLButtonElement>("#options");
 
 void refresh();
 
+forceMainQueueInput?.addEventListener("change", async () => {
+  await chrome.storage.local.set({ forceMainQueue: forceMainQueueInput.checked });
+  await refresh();
+});
+
 runNowButton?.addEventListener("click", async () => {
+  if (forceMainQueueInput) {
+    await chrome.storage.local.set({ forceMainQueue: forceMainQueueInput.checked });
+  }
+
   setText(statusElement, "Running…");
   const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_RUN_NOW" });
   const result = isRecord(response) ? response : {};
@@ -28,6 +39,10 @@ async function refresh() {
   const message = typeof stored.statusMessage === "string" ? stored.statusMessage : "Ready";
   const updatedAt = typeof stored.statusUpdatedAt === "string" ? stored.statusUpdatedAt : undefined;
   const lastTask = typeof stored.lastTask === "string" ? stored.lastTask : "—";
+
+  if (forceMainQueueInput) {
+    forceMainQueueInput.checked = stored.forceMainQueue === true;
+  }
 
   setText(statusElement, `${status}: ${message}${updatedAt ? ` (${new Date(updatedAt).toLocaleTimeString()})` : ""}`);
   setText(lastTaskElement, lastTask);

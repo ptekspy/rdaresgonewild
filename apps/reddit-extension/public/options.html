@@ -6,7 +6,9 @@
     <style>
       body { font: 14px/1.45 system-ui, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; background: #151017; color: #f7eff8; }
       label { display: block; margin: 16px 0 6px; font-weight: 700; }
-      input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #4c344f; background: #241827; color: #fff; }
+      input[type="text"], input[type="number"] { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #4c344f; background: #241827; color: #fff; }
+      .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 18px; font-weight: 700; }
+      .check input { margin-top: 3px; }
       button { margin-top: 18px; padding: 10px 14px; border: 0; border-radius: 8px; background: #ff7a18; color: #160b11; font-weight: 800; cursor: pointer; }
       .hint { color: #c9b8ce; font-size: 13px; }
       .status { margin-top: 12px; min-height: 20px; color: #ffd39a; }
@@ -14,13 +16,21 @@
   </head>
   <body>
     <h1>PaidPolitely Reddit Worker</h1>
-    <p class="hint">Use the local API while developing. The extension asks this API for one Reddit task at a time.</p>
+    <p class="hint">The worker asks the local API what to browse next, opens Reddit, scrolls the real page, scrapes loaded posts, then imports them.</p>
 
     <label for="apiBaseUrl">API base URL</label>
     <input id="apiBaseUrl" placeholder="http://localhost:8787" />
 
     <label for="pollSeconds">Poll interval when idle, seconds</label>
     <input id="pollSeconds" type="number" min="10" step="5" />
+
+    <label class="check" for="forceMainQueue">
+      <input id="forceMainQueue" type="checkbox" />
+      <span>
+        Force next run to start from Home + the 10 core subreddits
+        <span class="hint" style="display:block;font-weight:400;">One-shot: this queues Home best/new and the configured core subreddit best/new tasks immediately, then clears itself.</span>
+      </span>
+    </label>
 
     <button id="save">Save</button>
     <p id="status" class="status"></p>

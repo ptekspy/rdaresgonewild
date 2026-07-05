@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PaidPolitely Reddit Browser Worker",
-  "description": "Asks the PaidPolitely API what Reddit listing to browse next, then imports listing JSON back into the crawler database.",
-  "version": "0.1.0",
+  "description": "Asks the PaidPolitely API what Reddit listing to browse next, scrolls the real Reddit page, scrapes loaded posts, then imports them back into the crawler database.",
+  "version": "0.2.0",
   "action": {
     "default_title": "PaidPolitely Worker",
     "default_popup": "popup.html"
@@ -12,7 +12,12 @@
     "type": "module"
   },
   "options_page": "options.html",
-  "permissions": ["alarms", "storage", "tabs"],
+  "permissions": [
+    "alarms",
+    "storage",
+    "tabs",
+    "scripting"
+  ],
   "host_permissions": [
     "https://www.reddit.com/*",
     "https://old.reddit.com/*",

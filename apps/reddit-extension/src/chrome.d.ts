@@ -30,10 +30,28 @@ declare namespace chrome {
       url?: string;
       active?: boolean;
       windowId?: number;
+      status?: string;
     }
+
+    const onUpdated: ChromeEvent<(tabId: number, changeInfo: { status?: string }, tab: Tab) => void>;
+
     function query(queryInfo: Record<string, unknown>): Promise<Tab[]>;
     function create(createProperties: Record<string, unknown>): Promise<Tab>;
+    function get(tabId: number): Promise<Tab>;
     function update(tabId: number, updateProperties: Record<string, unknown>): Promise<Tab>;
+  }
+
+  namespace scripting {
+    interface InjectionResult<T = unknown> {
+      frameId: number;
+      result?: T;
+    }
+
+    function executeScript<T = unknown>(injection: {
+      target: { tabId: number };
+      func: (...args: any[]) => T | Promise<T>;
+      args?: unknown[];
+    }): Promise<Array<InjectionResult<T>>>;
   }
 
   namespace action {
@@ -41,7 +59,8 @@ declare namespace chrome {
     function setTitle(details: { title: string }): void;
   }
 
-  interface ChromeEvent<T extends (...args: never[]) => void> {
+  interface ChromeEvent<T extends (...args: any[]) => void> {
     addListener(callback: T): void;
+    removeListener(callback: T): void;
   }
 }

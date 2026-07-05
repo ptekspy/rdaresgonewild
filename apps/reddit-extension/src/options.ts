@@ -1,9 +1,11 @@
 export {};
+
 const DEFAULT_API_BASE_URL = "http://localhost:8787";
 const DEFAULT_POLL_SECONDS = 30;
 
 const apiBaseUrlInput = document.querySelector<HTMLInputElement>("#apiBaseUrl");
 const pollSecondsInput = document.querySelector<HTMLInputElement>("#pollSeconds");
+const forceMainQueueInput = document.querySelector<HTMLInputElement>("#forceMainQueue");
 const saveButton = document.querySelector<HTMLButtonElement>("#save");
 const statusElement = document.querySelector<HTMLElement>("#status");
 
@@ -23,6 +25,10 @@ async function loadOptions() {
   if (pollSecondsInput) {
     pollSecondsInput.value = String(typeof stored.pollSeconds === "number" ? stored.pollSeconds : DEFAULT_POLL_SECONDS);
   }
+
+  if (forceMainQueueInput) {
+    forceMainQueueInput.checked = stored.forceMainQueue === true;
+  }
 }
 
 async function saveOptions() {
@@ -37,6 +43,7 @@ async function saveOptions() {
   await chrome.storage.local.set({
     apiBaseUrl,
     pollSeconds: Number.isFinite(pollSeconds) ? Math.max(10, pollSeconds) : DEFAULT_POLL_SECONDS,
+    forceMainQueue: forceMainQueueInput?.checked === true,
   });
 
   setStatus("Saved. The worker will use this on its next run.");
