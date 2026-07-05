@@ -796,8 +796,15 @@ async function fetchJson<T>(settings: ExtensionSettings, pathname: string, init:
 
 async function getSettings(): Promise<ExtensionSettings> {
   const stored = await chrome.storage.local.get<Record<string, unknown>>(null);
+  const storedApiBaseUrl = typeof stored.apiBaseUrl === "string" ? stored.apiBaseUrl.replace(/\/$/, "") : "";
+  const apiBaseUrl = !storedApiBaseUrl || storedApiBaseUrl === "http://localhost:8787" ? DEFAULT_SETTINGS.apiBaseUrl : storedApiBaseUrl;
+
+  if (storedApiBaseUrl === "http://localhost:8787") {
+    await chrome.storage.local.set({ apiBaseUrl });
+  }
+
   return {
-    apiBaseUrl: typeof stored.apiBaseUrl === "string" ? stored.apiBaseUrl : DEFAULT_SETTINGS.apiBaseUrl,
+    apiBaseUrl,
     pollSeconds: typeof stored.pollSeconds === "number" ? Math.max(10, stored.pollSeconds) : DEFAULT_SETTINGS.pollSeconds,
     enabled: typeof stored.enabled === "boolean" ? stored.enabled : DEFAULT_SETTINGS.enabled,
     installId: typeof stored.installId === "string" ? stored.installId : undefined,

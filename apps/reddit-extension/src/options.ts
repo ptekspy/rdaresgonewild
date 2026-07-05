@@ -17,9 +17,15 @@ saveButton?.addEventListener("click", () => {
 
 async function loadOptions() {
   const stored = await chrome.storage.local.get<Record<string, unknown>>(null);
+  const storedApiBaseUrl = typeof stored.apiBaseUrl === "string" ? stored.apiBaseUrl.replace(/\/$/, "") : "";
+  const apiBaseUrl = !storedApiBaseUrl || storedApiBaseUrl === "http://localhost:8787" ? DEFAULT_API_BASE_URL : storedApiBaseUrl;
+
+  if (storedApiBaseUrl === "http://localhost:8787") {
+    await chrome.storage.local.set({ apiBaseUrl });
+  }
 
   if (apiBaseUrlInput) {
-    apiBaseUrlInput.value = typeof stored.apiBaseUrl === "string" ? stored.apiBaseUrl : DEFAULT_API_BASE_URL;
+    apiBaseUrlInput.value = apiBaseUrl;
   }
 
   if (pollSecondsInput) {
