@@ -14,6 +14,7 @@ export class ExtensionJsonIngestError extends Error {
 
 interface ExtensionJsonJobState {
   source?: string;
+  mode?: string;
   scope?: string;
   sort?: string;
   subreddit?: string;
@@ -67,6 +68,9 @@ interface ExtensionJsonPost extends RedditPost {
   created_utc: number;
   scrapedAt?: string;
   sourceUrl?: string;
+  subredditNsfw?: boolean;
+  nsfw?: boolean;
+  over18?: boolean;
 }
 
 interface BufferedJob {
@@ -123,6 +127,7 @@ export async function ingestExtensionJsonPosts(jobId: string, body: unknown) {
 export async function flushExtensionJsonBuffer(jobId: string, reason = "manual"): Promise<FlushResult> {
   const buffer = buffers.get(jobId);
   if (!buffer || buffer.posts.size === 0) {
+    if (isTerminalFlush(reason)) buffers.delete(jobId);
     return {
       flushed: false,
       savedPosts: 0,
@@ -142,7 +147,13 @@ export async function flushExtensionJsonBuffer(jobId: string, reason = "manual")
 
   const result = await savePostBatch(jobId, posts, reason);
   buffer.lastResult = result;
+
+  if (isTerminalFlush(reason)) buffers.delete(jobId);
   return result;
+}
+
+function isTerminalFlush(reason: string) {
+  return reason === "task-complete" || reason === "task-stopped" || reason === "task-error";
 }
 
 function getBuffer(jobId: string) {
@@ -218,14 +229,46 @@ async function savePostBatch(jobId: string, posts: ExtensionJsonPost[], reason: 
       permalink: normalisePermalink(post.permalink),
       createdAtReddit: new Date(post.created_utc * 1000).toISOString(),
       rawJson: {
-        ...post,
+        postType: post.postType ?? null,
+        tags: post.tags ?? [],
+        videoUrls: post.videoUrls ?? [],
+        embedUrls: post.embedUrls ?? [],
+        subredditNsfw: post.subredditNsfw === true,
+        nsfw: post.nsfw === true || post.over18 === true,
+        scrapedAt: post.scrapedAt,
+        sourceUrl: post.sourceUrl,
         batchReason: reason,
         crawledBy: "paidpolitely-extension-json",
       },
     };
   });
 
-  await prisma.$executeRawUnsafe(
+  const verifiedSubredditRows = [...new Set(rows.map((row) => row.subreddit).filter(Boolean))].map((subreddit) => ({
+    id: `sub_${randomUUID().replace(/-/g, "")}`,
+    siteKey: "paidpolitely",
+    subreddit,
+  }));
+
+  if (verifiedSubredditRows.length > 0) {
+    await prisma.$executeRawUnsafe(
+      `
+WITH payload AS (
+  SELECT *
+  FROM jsonb_to_recordset($1::jsonb) AS p("id" text, "siteKey" text, "subreddit" text)
+)
+INSERT INTO "SiteSubreddit" ("id", "siteKey", "subreddit", "enabled", "createdAt", "updatedAt")
+SELECT "id", "siteKey", "subreddit", true, now(), now()
+FROM payload
+WHERE "subreddit" IS NOT NULL AND "subreddit" <> ''
+ON CONFLICT ("siteKey", "subreddit") DO UPDATE SET
+  "enabled" = true,
+  "updatedAt" = now();
+      `,
+      JSON.stringify(verifiedSubredditRows),
+    );
+  }
+
+  const savedRows = await prisma.$queryRawUnsafe<Array<{ id: string; redditId: string; authorUsername: string }>>(
     `
 WITH payload AS (
   SELECT *
@@ -262,12 +305,7 @@ valid_payload AS (
 ),
 inserted_users AS (
   INSERT INTO "DgwUser" ("id", "username", "postCount", "createdAt", "updatedAt")
-  SELECT DISTINCT
-    "userDbId",
-    "authorUsername",
-    0,
-    now(),
-    now()
+  SELECT DISTINCT "userDbId", "authorUsername", 0, now(), now()
   FROM valid_payload
   ON CONFLICT ("username") DO NOTHING
 ),
@@ -279,30 +317,9 @@ new_posts AS (
 ),
 upserted_posts AS (
   INSERT INTO "DgwPost" (
-    "id",
-    "subreddit",
-    "redditId",
-    "authorUsername",
-    "title",
-    "selftext",
-    "flair",
-    "score",
-    "upvoteCount",
-    "upvoteRatio",
-    "commentCount",
-    "shareCount",
-    "crosspostCount",
-    "mediaUrls",
-    "imageUrls",
-    "outboundUrl",
-    "thumbnailUrl",
-    "permalink",
-    "rawJson",
-    "source",
-    "createdAtReddit",
-    "crawledAt",
-    "lastSeenAt",
-    "updatedAt"
+    "id", "subreddit", "redditId", "authorUsername", "title", "selftext", "flair", "score", "upvoteCount",
+    "upvoteRatio", "commentCount", "shareCount", "crosspostCount", "mediaUrls", "imageUrls", "outboundUrl",
+    "thumbnailUrl", "permalink", "rawJson", "source", "createdAtReddit", "crawledAt", "lastSeenAt", "updatedAt"
   )
   SELECT
     p."dbId",
@@ -355,38 +372,31 @@ post_count_updates AS (
   SELECT "authorUsername", COUNT(*)::int AS count
   FROM new_posts
   GROUP BY "authorUsername"
+),
+updated_users AS (
+  UPDATE "DgwUser" u
+  SET "postCount" = u."postCount" + pcu.count,
+      "updatedAt" = now()
+  FROM post_count_updates pcu
+  WHERE u."username" = pcu."authorUsername"
+  RETURNING u."username"
 )
-UPDATE "DgwUser" u
-SET "postCount" = u."postCount" + pcu.count,
-    "updatedAt" = now()
-FROM post_count_updates pcu
-WHERE u."username" = pcu."authorUsername";
+SELECT "id", "redditId", "authorUsername" FROM upserted_posts;
     `,
     JSON.stringify(rows),
   );
 
-  const saved = await prisma.dgwPost.findMany({
-    where: { redditId: { in: cleanPosts.map((post) => post.id) } },
-    select: { id: true, redditId: true },
-  });
-
-  const postIdByRedditId = new Map(saved.map((post) => [post.redditId, post.id]));
+  const postIdByRedditId = new Map(savedRows.map((post) => [post.redditId, post.id]));
   const completionRows = buildCompletionRows(cleanPosts, postIdByRedditId);
   let completionsFound = 0;
 
   if (completionRows.playbook.length > 0) {
-    const result = await prisma.playbookCompletion.createMany({
-      data: completionRows.playbook,
-      skipDuplicates: true,
-    });
+    const result = await prisma.playbookCompletion.createMany({ data: completionRows.playbook, skipDuplicates: true });
     completionsFound += result.count;
   }
 
   if (completionRows.community.length > 0) {
-    const result = await prisma.communityCompletion.createMany({
-      data: completionRows.community,
-      skipDuplicates: true,
-    });
+    const result = await prisma.communityCompletion.createMany({ data: completionRows.community, skipDuplicates: true });
     completionsFound += result.count;
   }
 
@@ -396,7 +406,7 @@ WHERE u."username" = pcu."authorUsername";
     crawlRunId,
     pagesScanned: (state.pagesScanned ?? 0) + 1,
     rawPostsSeen: (state.rawPostsSeen ?? 0) + posts.length,
-    postsProcessed: (state.postsProcessed ?? 0) + cleanPosts.length,
+    postsProcessed: (state.postsProcessed ?? 0) + savedRows.length,
     completionsFound: (state.completionsFound ?? 0) + completionsFound,
     authors: [...authors].slice(0, 250),
     lastAfter: null,
@@ -411,17 +421,14 @@ WHERE u."username" = pcu."authorUsername";
     },
   });
 
-  await prisma.browserCrawlJob.update({
-    where: { id: job.id },
-    data: { state: toJsonState(nextState) },
-  });
+  await prisma.browserCrawlJob.update({ where: { id: job.id }, data: { state: toJsonState(nextState) } });
 
   return {
     flushed: true,
-    savedPosts: cleanPosts.length,
+    savedPosts: savedRows.length,
     completionsFound,
     rawPostsSeen: posts.length,
-    postsProcessed: cleanPosts.length,
+    postsProcessed: savedRows.length,
   };
 }
 
@@ -435,21 +442,11 @@ function buildCompletionRows(posts: ExtensionJsonPost[], postIdByRedditId: Map<s
 
     const detection = detectDareType(post);
     if (detection.type === "playbook" && detection.dareSlug) {
-      playbook.push({
-        username: post.author,
-        dareSlug: detection.dareSlug,
-        postId,
-        confidence: detection.confidence,
-        verified: null,
-      });
+      playbook.push({ username: post.author, dareSlug: detection.dareSlug, postId, confidence: detection.confidence, verified: null });
     }
 
     if (detection.type === "community" && detection.darerUsername) {
-      community.push({
-        username: post.author,
-        darerUsername: detection.darerUsername,
-        postId,
-      });
+      community.push({ username: post.author, darerUsername: detection.darerUsername, postId });
     }
   }
 
@@ -463,14 +460,7 @@ async function findExtensionJob(jobId: string) {
 }
 
 async function createCrawlRun(job: BrowserCrawlJob) {
-  const run = await prisma.crawlRun.create({
-    data: {
-      type: job.type,
-      target: job.target,
-      status: "running",
-    },
-  });
-
+  const run = await prisma.crawlRun.create({ data: { type: job.type, target: job.target, status: "running" } });
   return run.id;
 }
 
@@ -491,7 +481,7 @@ function readPosts(value: unknown) {
 
 function readPost(value: unknown): ExtensionJsonPost | null {
   if (!isObject(value)) return null;
-  const id = readString(value.id);
+  const id = readString(value.id).replace(/^t3_/i, "");
   const author = readString(value.author);
   const title = readString(value.title);
   const permalink = readString(value.permalink);
@@ -530,6 +520,9 @@ function readPost(value: unknown): ExtensionJsonPost | null {
     created_utc: readNumber(value.created_utc) || Math.floor(Date.now() / 1000),
     scrapedAt: readString(value.scrapedAt),
     sourceUrl: readString(value.sourceUrl),
+    subredditNsfw: value.subredditNsfw === true,
+    nsfw: value.nsfw === true,
+    over18: value.over18 === true,
   };
 }
 
@@ -537,6 +530,8 @@ function normaliseJsonPost(post: ExtensionJsonPost | null): ExtensionJsonPost | 
   if (!post) return null;
   if (!/^[A-Za-z0-9_-]{3,20}$/.test(post.author)) return null;
   if (!post.id || !post.title) return null;
+  if (!isVerifiedNsfwPost(post)) return null;
+
   return {
     ...post,
     id: post.id.replace(/^t3_/i, ""),
@@ -549,6 +544,10 @@ function normaliseJsonPost(post: ExtensionJsonPost | null): ExtensionJsonPost | 
     crosspostCount: safeInteger(post.crosspostCount ?? post.num_crossposts ?? 0),
     num_crossposts: safeInteger(post.num_crossposts ?? post.crosspostCount ?? 0),
   };
+}
+
+function isVerifiedNsfwPost(post: ExtensionJsonPost) {
+  return post.subredditNsfw === true || post.nsfw === true || post.over18 === true || (post.tags ?? []).some((tag) => /\bnsfw\b|adult|mature/i.test(tag));
 }
 
 function dedupePosts(posts: ExtensionJsonPost[]) {
@@ -607,28 +606,16 @@ function toJsonState(state: ExtensionJsonJobState): Prisma.InputJsonObject {
 
   const clean = (value: unknown): JsonChild | undefined => {
     if (value === undefined) return undefined;
-
-    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      return value;
-    }
-
-    if (Array.isArray(value)) {
-      return value
-        .map((item) => clean(item))
-        .filter((item): item is JsonChild => item !== undefined);
-    }
-
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+    if (Array.isArray(value)) return value.map((item) => clean(item)).filter((item): item is JsonChild => item !== undefined);
     if (typeof value === "object") {
       const output: Record<string, JsonChild> = {};
-
       for (const [key, childValue] of Object.entries(value)) {
         const cleaned = clean(childValue);
         if (cleaned !== undefined) output[key] = cleaned;
       }
-
       return output as Prisma.InputJsonObject;
     }
-
     return String(value);
   };
 

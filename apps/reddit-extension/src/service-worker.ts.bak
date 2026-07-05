@@ -80,7 +80,7 @@ const MAX_BATCH_BYTES = 7_500_000;
 const MAX_HTML_CHARS_PER_POST = 25_000;
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
-  apiBaseUrl: "http://localhost:8787",
+  apiBaseUrl: "http://localhost:8788",
   pollSeconds: 30,
   enabled: true,
   forceMainQueue: false,

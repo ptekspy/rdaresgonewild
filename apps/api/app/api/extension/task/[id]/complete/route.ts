@@ -20,10 +20,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
-
-    // If the JSON-live crawler has buffered fewer than 10 posts, persist them before completion.
-    await flushExtensionJsonBuffer(id, "task-complete");
-
+    const stopped = typeof body === "object" && body !== null && "stopped" in body && body.stopped === true;
+    await flushExtensionJsonBuffer(id, stopped ? "task-stopped" : "task-complete");
     const result = await completeExtensionTask(id, body);
     return jsonResponse(result);
   } catch (error) {

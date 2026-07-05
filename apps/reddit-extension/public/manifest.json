@@ -1,32 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "PaidPolitely Reddit Browser Worker",
-  "description": "Asks the PaidPolitely API what Reddit listing to browse next, scrolls the real Reddit page, scrapes loaded posts, then imports them back into the crawler database.",
-  "version": "0.2.0",
-  "action": {
-    "default_title": "PaidPolitely Worker",
-    "default_popup": "popup.html"
-  },
-  "background": {
-    "service_worker": "service-worker.js",
-    "type": "module"
-  },
-  "options_page": "options.html",
-  "permissions": [
-    "alarms",
-    "storage",
-    "tabs",
-    "scripting"
-  ],
+  "name": "PaidPolitely Reddit Worker",
+  "version": "0.5.0",
+  "description": "Crawls Reddit pages through the browser and sends JSON posts to PaidPolitely.",
+  "permissions": ["alarms", "storage", "tabs", "scripting"],
   "host_permissions": [
     "https://www.reddit.com/*",
     "https://old.reddit.com/*",
     "http://localhost:8787/*",
+    "http://localhost:8788/*",
     "https://api.paidpolitely.com/*"
   ],
-  "icons": {
-    "16": "icon.svg",
-    "48": "icon.svg",
-    "128": "icon.svg"
-  }
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "PaidPolitely Reddit Worker" },
+  "options_page": "options.html",
+  "icons": { "16": "icon.svg", "48": "icon.svg", "128": "icon.svg" }
 }

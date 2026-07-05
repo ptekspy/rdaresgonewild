@@ -4,124 +4,46 @@
     <meta charset="utf-8" />
     <title>PaidPolitely Worker</title>
     <style>
-      body {
-        width: 340px;
-        padding: 12px;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: #111827;
-      }
-
-      h1 {
-        font-size: 16px;
-        margin: 0 0 8px;
-      }
-
-      .card {
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        padding: 10px;
-        margin-bottom: 10px;
-        background: #fafafa;
-      }
-
-      .status {
-        font-size: 13px;
-        line-height: 1.35;
-        white-space: pre-wrap;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-        font-size: 12px;
-      }
-
-      .metric {
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 6px;
-      }
-
-      .metric strong {
-        display: block;
-        font-size: 15px;
-      }
-
-      label {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        font-size: 13px;
-        margin: 8px 0;
-      }
-
-      button {
-        border: 0;
-        border-radius: 999px;
-        padding: 8px 12px;
-        cursor: pointer;
-        font-weight: 650;
-      }
-
-      .buttons {
-        display: flex;
-        gap: 8px;
-      }
-
-      #runNow {
-        background: #111827;
-        color: white;
-      }
-
-      #stopNow {
-        background: #dc2626;
-        color: white;
-      }
-
-      #options {
-        background: #e5e7eb;
-        color: #111827;
-      }
-
-      .muted {
-        color: #6b7280;
-        font-size: 12px;
-      }
+      body { font-family: system-ui, sans-serif; min-width: 380px; padding: 12px; color: #111; }
+      button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 10px; font-weight: 650; }
+      .row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+      .start { background: #111; color: #fff; }
+      .stop { background: #f2d4d4; color: #8a1111; }
+      .secondary { background: #eee; color: #222; }
+      .mode { border: 1px solid #ddd; border-radius: 10px; padding: 8px; margin: 10px 0; }
+      .mode h3 { margin: 0 0 6px; font-size: 14px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12px; }
+      .label { color: #666; }
+      pre { white-space: pre-wrap; background: #f7f7f7; border-radius: 8px; padding: 8px; font-size: 12px; }
     </style>
   </head>
   <body>
-    <h1>PaidPolitely Reddit Worker</h1>
+    <strong>PaidPolitely Reddit Worker</strong>
+    <pre id="status">Loading…</pre>
 
-    <div class="card">
-      <div id="status" class="status">Loading…</div>
-      <div class="muted">Last task: <span id="lastTask">—</span></div>
+    <div class="mode" data-mode="system">
+      <h3>Mode 1 — Fill system subreddits</h3>
+      <div class="row"><button class="start" data-start="system">Start</button><button class="stop" data-stop="system">Stop</button></div>
+      <div class="grid" id="stats-system"></div>
     </div>
 
-    <div class="card">
-      <div class="grid">
-        <div class="metric">Posts seen<strong id="postsSeen">0</strong></div>
-        <div class="metric">New this scroll<strong id="newPosts">0</strong></div>
-        <div class="metric">Scroll passes<strong id="scrollPasses">0</strong></div>
-        <div class="metric">API buffered<strong id="apiBuffered">0</strong></div>
-        <div class="metric">Batches sent<strong id="batchesSent">0</strong></div>
-        <div class="metric">Saved/completions<strong id="savedCounts">0 / 0</strong></div>
-      </div>
-      <div id="endState" class="muted" style="margin-top: 8px;">End not detected yet.</div>
+    <div class="mode" data-mode="backfill">
+      <h3>Mode 2 — Backfill verified NSFW subreddits</h3>
+      <div class="row"><button class="start" data-start="backfill">Start</button><button class="stop" data-stop="backfill">Stop</button></div>
+      <div class="grid" id="stats-backfill"></div>
     </div>
 
-    <label>
-      <input id="forceMainQueue" type="checkbox" />
-      <span>Force next run from Home + core 10</span>
-    </label>
-
-    <div class="buttons">
-      <button id="runNow">Run now</button>
-      <button id="stopNow">Stop</button>
-      <button id="options">Options</button>
+    <div class="mode" data-mode="current">
+      <h3>Mode 3 — Current page hourly</h3>
+      <div class="row"><button class="start" data-start="current">Start / Watch</button><button class="stop" data-stop="current">Stop</button></div>
+      <div class="grid" id="stats-current"></div>
     </div>
 
-    <script type="module" src="popup.js"></script>
+    <div class="row">
+      <button class="stop" id="stopAll">Stop all</button>
+      <button class="secondary" id="options">Options</button>
+    </div>
+
+    <script src="popup.js"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 export {};
 
-const DEFAULT_API_BASE_URL = "http://localhost:8787";
+const DEFAULT_API_BASE_URL = "http://localhost:8788";
 const DEFAULT_POLL_SECONDS = 30;
 
 const apiBaseUrlInput = document.querySelector<HTMLInputElement>("#apiBaseUrl");

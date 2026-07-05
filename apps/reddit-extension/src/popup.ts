@@ -1,106 +1,84 @@
 export {};
 
+type CrawlMode = "system" | "backfill" | "current";
+
 const statusElement = document.querySelector<HTMLElement>("#status");
-const lastTaskElement = document.querySelector<HTMLElement>("#lastTask");
-const forceMainQueueInput = document.querySelector<HTMLInputElement>("#forceMainQueue");
-const runNowButton = document.querySelector<HTMLButtonElement>("#runNow");
-const stopNowButton = document.querySelector<HTMLButtonElement>("#stopNow");
 const optionsButton = document.querySelector<HTMLButtonElement>("#options");
+const stopAllButton = document.querySelector<HTMLButtonElement>("#stopAll");
+const modes: CrawlMode[] = ["system", "backfill", "current"];
 
-const postsSeenElement = document.querySelector<HTMLElement>("#postsSeen");
-const newPostsElement = document.querySelector<HTMLElement>("#newPosts");
-const scrollPassesElement = document.querySelector<HTMLElement>("#scrollPasses");
-const apiBufferedElement = document.querySelector<HTMLElement>("#apiBuffered");
-const batchesSentElement = document.querySelector<HTMLElement>("#batchesSent");
-const savedCountsElement = document.querySelector<HTMLElement>("#savedCounts");
-const endStateElement = document.querySelector<HTMLElement>("#endState");
+for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>("[data-start]"))) {
+  button.addEventListener("click", async () => {
+    const mode = button.dataset.start as CrawlMode;
+    setText(statusElement, `Starting ${mode}…`);
+    const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_START_MODE", mode });
+    const result = isRecord(response) ? response : {};
+    if (result.ok === false) setText(statusElement, `Error: ${String(result.error ?? "unknown")}`);
+    await refresh();
+  });
+}
 
-void refresh();
-const refreshTimer = setInterval(() => void refresh(), 1000);
-window.addEventListener("unload", () => clearInterval(refreshTimer));
+for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>("[data-stop]"))) {
+  button.addEventListener("click", async () => {
+    const mode = button.dataset.stop as CrawlMode;
+    setText(statusElement, `Stopping ${mode}…`);
+    const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_STOP_MODE", mode });
+    const result = isRecord(response) ? response : {};
+    if (result.ok === false) setText(statusElement, `Stop error: ${String(result.error ?? "unknown")}`);
+    await refresh();
+  });
+}
 
-forceMainQueueInput?.addEventListener("change", async () => {
-  await chrome.storage.local.set({ forceMainQueue: forceMainQueueInput.checked });
+stopAllButton?.addEventListener("click", async () => {
+  setText(statusElement, "Stopping all modes…");
+  const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_STOP_ALL" });
+  const result = isRecord(response) ? response : {};
+  if (result.ok === false) setText(statusElement, `Stop error: ${String(result.error ?? "unknown")}`);
   await refresh();
 });
 
-runNowButton?.addEventListener("click", async () => {
-  if (forceMainQueueInput) {
-    await chrome.storage.local.set({ forceMainQueue: forceMainQueueInput.checked });
-  }
+optionsButton?.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
-  await chrome.storage.local.set({ stopRequested: false });
-  setText(statusElement, "Running…");
-  const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_RUN_NOW" });
-  const result = isRecord(response) ? response : {};
-
-  if (result.ok === false) {
-    setText(statusElement, `Error: ${String(result.error ?? "unknown")}`);
-  } else {
-    await refresh();
-  }
-});
-
-stopNowButton?.addEventListener("click", async () => {
-  setText(statusElement, "Stop requested…");
-  const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_STOP_NOW" });
-  const result = isRecord(response) ? response : {};
-
-  if (result.ok === false) {
-    setText(statusElement, `Stop error: ${String(result.error ?? "unknown")}`);
-  } else {
-    await refresh();
-  }
-});
-
-optionsButton?.addEventListener("click", () => {
-  chrome.runtime.openOptionsPage();
-});
+void refresh();
+const timer = setInterval(() => void refresh(), 1000);
+window.addEventListener("unload", () => clearInterval(timer));
 
 async function refresh() {
   const stored = await chrome.storage.local.get<Record<string, unknown>>(null);
   const status = typeof stored.status === "string" ? stored.status : "ready";
   const message = typeof stored.statusMessage === "string" ? stored.statusMessage : "Ready";
   const updatedAt = typeof stored.statusUpdatedAt === "string" ? stored.statusUpdatedAt : undefined;
-  const lastTask = typeof stored.lastTask === "string" ? stored.lastTask : "—";
-  const stats = isRecord(stored.crawlStats) ? stored.crawlStats : {};
-
-  if (forceMainQueueInput) {
-    forceMainQueueInput.checked = stored.forceMainQueue === true;
-  }
-
   setText(statusElement, `${status}: ${message}${updatedAt ? `\n${new Date(updatedAt).toLocaleTimeString()}` : ""}`);
-  setText(lastTaskElement, lastTask);
 
-  const postsSeen = numberValue(stats.postsSeen);
-  const newPosts = numberValue(stats.newPosts);
-  const scrollPasses = numberValue(stats.scrollPasses);
-  const apiBuffered = numberValue(stats.apiBuffered);
-  const batchesSent = numberValue(stats.batchesSent);
-  const savedPosts = numberValue(stats.savedPosts);
-  const completionsFound = numberValue(stats.completionsFound);
-  const bottomRounds = numberValue(stats.bottomRounds);
-  const noNewRounds = numberValue(stats.noNewRounds);
-  const heightStableRounds = numberValue(stats.heightStableRounds);
+  for (const mode of modes) {
+    const rawStats = stored[`crawlStats_${mode}`];
+    renderMode(mode, isRecord(rawStats) ? rawStats : {});
+  }
+}
+
+function renderMode(mode: CrawlMode, stats: Record<string, unknown>) {
+  const el = document.querySelector<HTMLElement>(`#stats-${mode}`);
+  if (!el) return;
+  const status = typeof stats.status === "string" ? stats.status : "idle";
+  const target = typeof stats.taskTarget === "string" ? stats.taskTarget : "—";
+  const reason = typeof stats.reason === "string" ? stats.reason : "";
   const endDetected = stats.endDetected === true;
   const stopRequested = stats.stopRequested === true;
-  const reason = typeof stats.reason === "string" ? stats.reason : "";
 
-  setText(postsSeenElement, String(postsSeen));
-  setText(newPostsElement, String(newPosts));
-  setText(scrollPassesElement, String(scrollPasses));
-  setText(apiBufferedElement, String(apiBuffered));
-  setText(batchesSentElement, String(batchesSent));
-  setText(savedCountsElement, `${savedPosts} / ${completionsFound}`);
+  const items: Array<[string, string]> = [
+    ["Status", status],
+    ["Target", target],
+    ["Posts seen", String(numberValue(stats.postsSeen))],
+    ["New last pass", String(numberValue(stats.newPosts))],
+    ["Scroll passes", String(numberValue(stats.scrollPasses))],
+    ["API buffered", String(numberValue(stats.apiBuffered))],
+    ["Batches", String(numberValue(stats.batchesSent))],
+    ["Saved / completions", `${numberValue(stats.savedPosts)} / ${numberValue(stats.completionsFound)}`],
+    ["End", endDetected ? "yes" : stopRequested ? "stopping" : "no"],
+    ["Reason", reason || "—"],
+  ];
 
-  setText(
-    endStateElement,
-    endDetected
-      ? `End detected: ${reason || "lazy-load exhausted"}`
-      : stopRequested
-        ? "Stopping after current flush…"
-        : `Still scrolling. bottom=${bottomRounds}, idle=${noNewRounds}, heightStable=${heightStableRounds}`,
-  );
+  el.innerHTML = items.map(([label, value]) => `<span class="label">${escapeHtml(label)}</span><span>${escapeHtml(value)}</span>`).join("");
 }
 
 function numberValue(value: unknown) {
@@ -109,6 +87,10 @@ function numberValue(value: unknown) {
 
 function setText(element: HTMLElement | null, text: string) {
   if (element) element.textContent = text;
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
