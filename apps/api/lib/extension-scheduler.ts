@@ -828,7 +828,9 @@ function mergeStableState(existing: ExtensionJobState, next: ExtensionJobState):
 
 
 function toJsonState(state: ExtensionJobState): Prisma.InputJsonObject {
-  const clean = (value: unknown): Prisma.InputJsonValue | undefined => {
+  type JsonChild = Prisma.InputJsonValue | null;
+
+  const clean = (value: unknown): JsonChild | undefined => {
     if (value === undefined) return undefined;
 
     if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -838,11 +840,11 @@ function toJsonState(state: ExtensionJobState): Prisma.InputJsonObject {
     if (Array.isArray(value)) {
       return value
         .map((item) => clean(item))
-        .filter((item): item is Prisma.InputJsonValue => item !== undefined);
+        .filter((item): item is JsonChild => item !== undefined);
     }
 
     if (typeof value === "object") {
-      const output: Record<string, Prisma.InputJsonValue> = {};
+      const output: Record<string, JsonChild> = {};
 
       for (const [key, childValue] of Object.entries(value)) {
         const cleaned = clean(childValue);
@@ -855,8 +857,10 @@ function toJsonState(state: ExtensionJobState): Prisma.InputJsonObject {
     return String(value);
   };
 
-  return clean(state) as Prisma.InputJsonObject;
+  const cleaned = clean(state);
+  return (cleaned && typeof cleaned === "object" && !Array.isArray(cleaned) ? cleaned : {}) as Prisma.InputJsonObject;
 }
+
 
 function readListingFromBody(body: unknown): RedditListing {
   const payload = readObject(body);
