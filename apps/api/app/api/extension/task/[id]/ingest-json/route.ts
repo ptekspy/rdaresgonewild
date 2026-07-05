@@ -1,7 +1,6 @@
 import { type NextRequest } from "next/server";
 
-import { completeExtensionTask } from "@/lib/extension-scheduler";
-import { flushExtensionJsonBuffer } from "@/lib/extension-json-buffer";
+import { ExtensionJsonIngestError, ingestExtensionJsonPosts } from "@/lib/extension-json-buffer";
 import { jsonError, jsonResponse, optionsResponse } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -20,14 +19,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
-
-    // If the JSON-live crawler has buffered fewer than 10 posts, persist them before completion.
-    await flushExtensionJsonBuffer(id, "task-complete");
-
-    const result = await completeExtensionTask(id, body);
+    const result = await ingestExtensionJsonPosts(id, body);
     return jsonResponse(result);
   } catch (error) {
-    console.error(`Failed to complete extension task ${id}`, error);
-    return jsonError("Failed to complete extension task", 500);
+    if (error instanceof ExtensionJsonIngestError) return jsonError(error.message, error.status);
+
+    console.error(`Failed to ingest extension JSON task ${id}`, error);
+    return jsonError("Failed to ingest extension JSON task", 500);
   }
 }

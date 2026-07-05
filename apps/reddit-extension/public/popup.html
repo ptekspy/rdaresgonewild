@@ -1,50 +1,125 @@
 <!doctype html>
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
     <title>PaidPolitely Worker</title>
     <style>
-      body { width: 360px; font: 13px/1.45 system-ui, sans-serif; margin: 0; padding: 14px; background: #151017; color: #f7eff8; }
-      h1 { font-size: 16px; margin: 0 0 8px; }
-      .card { border: 1px solid #3d2a42; border-radius: 10px; padding: 10px; background: #211724; margin: 10px 0; }
-      .label { color: #c9b8ce; font-size: 12px; }
-      .check { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
-      .check input { width: auto; margin-top: 2px; }
-      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-      button { padding: 8px 10px; border: 0; border-radius: 8px; background: #ff7a18; color: #160b11; font-weight: 800; cursor: pointer; }
-      button.secondary { background: #3d2a42; color: #f7eff8; }
-      button.danger { background: #ff3b57; color: #fff; }
-      code { overflow-wrap: anywhere; }
-      small { color: #c9b8ce; }
+      body {
+        width: 340px;
+        padding: 12px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #111827;
+      }
+
+      h1 {
+        font-size: 16px;
+        margin: 0 0 8px;
+      }
+
+      .card {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 10px;
+        background: #fafafa;
+      }
+
+      .status {
+        font-size: 13px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .metric {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 6px;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 15px;
+      }
+
+      label {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        font-size: 13px;
+        margin: 8px 0;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-weight: 650;
+      }
+
+      .buttons {
+        display: flex;
+        gap: 8px;
+      }
+
+      #runNow {
+        background: #111827;
+        color: white;
+      }
+
+      #stopNow {
+        background: #dc2626;
+        color: white;
+      }
+
+      #options {
+        background: #e5e7eb;
+        color: #111827;
+      }
+
+      .muted {
+        color: #6b7280;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
-    <h1>PaidPolitely Worker</h1>
+    <h1>PaidPolitely Reddit Worker</h1>
 
     <div class="card">
-      <div class="label">Status</div>
-      <div id="status">Loading…</div>
+      <div id="status" class="status">Loading…</div>
+      <div class="muted">Last task: <span id="lastTask">—</span></div>
     </div>
 
     <div class="card">
-      <div class="label">Last task</div>
-      <code id="lastTask">—</code>
+      <div class="grid">
+        <div class="metric">Posts seen<strong id="postsSeen">0</strong></div>
+        <div class="metric">New this scroll<strong id="newPosts">0</strong></div>
+        <div class="metric">Scroll passes<strong id="scrollPasses">0</strong></div>
+        <div class="metric">API buffered<strong id="apiBuffered">0</strong></div>
+        <div class="metric">Batches sent<strong id="batchesSent">0</strong></div>
+        <div class="metric">Saved/completions<strong id="savedCounts">0 / 0</strong></div>
+      </div>
+      <div id="endState" class="muted" style="margin-top: 8px;">End not detected yet.</div>
     </div>
 
-    <div class="card">
-      <label class="check">
-        <input id="forceMainQueue" type="checkbox" />
-        <span>
-          Force next run from Home + core 10<br />
-          <small>Starts the ordered home/core batch ahead of DB-discovered subreddits.</small>
-        </span>
-      </label>
-    </div>
+    <label>
+      <input id="forceMainQueue" type="checkbox" />
+      <span>Force next run from Home + core 10</span>
+    </label>
 
-    <div class="actions">
+    <div class="buttons">
       <button id="runNow">Run now</button>
-      <button id="stop" class="danger">Stop</button>
-      <button id="options" class="secondary">Options</button>
+      <button id="stopNow">Stop</button>
+      <button id="options">Options</button>
     </div>
 
     <script type="module" src="popup.js"></script>
