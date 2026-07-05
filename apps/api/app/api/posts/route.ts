@@ -118,6 +118,7 @@ export async function GET(request: NextRequest) {
     const page = readIntParam(searchParams, "page", 1, 1, 100_000);
     const pageSize = readIntParam(searchParams, "pageSize", readIntParam(searchParams, "limit", 50, 1, 250), 1, 250);
     const skip = (page - 1) * pageSize;
+    const compact = readBooleanParam(searchParams, "compact") ?? false;
 
     const sort = searchParams.get("sort") ?? searchParams.get("sortBy") ?? "created";
     if (!(sort in SORT_FIELDS)) {
@@ -236,11 +237,29 @@ export async function GET(request: NextRequest) {
     ]);
 
     return jsonResponse({
-      data: posts.map((post) => ({
-        ...post,
-        likes: post.upvoteCount ?? post.score,
-        redditUrl: post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}`,
-      })),
+      data: posts.map((post) => {
+        const compactPost = {
+          redditId: post.redditId,
+          subreddit: post.subreddit,
+          authorUsername: post.authorUsername,
+          title: post.title,
+          score: post.score,
+          likes: post.upvoteCount ?? post.score,
+          commentCount: post.commentCount,
+          upvoteRatio: post.upvoteRatio,
+          redditUrl: post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}`,
+          thumbnailUrl: post.thumbnailUrl,
+          createdAtReddit: post.createdAtReddit.toISOString(),
+        };
+
+        if (compact) return compactPost;
+
+        return {
+          ...post,
+          likes: compactPost.likes,
+          redditUrl: compactPost.redditUrl,
+        };
+      }),
       meta: {
         page,
         pageSize,
@@ -250,6 +269,7 @@ export async function GET(request: NextRequest) {
         hasPreviousPage: page > 1,
         sort,
         order,
+        compact,
         filters: {
           subreddit: subreddits,
           author: authors,
