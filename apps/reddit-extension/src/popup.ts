@@ -4,6 +4,7 @@ const statusElement = document.querySelector<HTMLElement>("#status");
 const lastTaskElement = document.querySelector<HTMLElement>("#lastTask");
 const forceMainQueueInput = document.querySelector<HTMLInputElement>("#forceMainQueue");
 const runNowButton = document.querySelector<HTMLButtonElement>("#runNow");
+const stopButton = document.querySelector<HTMLButtonElement>("#stop");
 const optionsButton = document.querySelector<HTMLButtonElement>("#options");
 
 void refresh();
@@ -24,6 +25,18 @@ runNowButton?.addEventListener("click", async () => {
 
   if (result.ok === false) {
     setText(statusElement, `Error: ${String(result.error ?? "unknown")}`);
+  } else {
+    await refresh();
+  }
+});
+
+stopButton?.addEventListener("click", async () => {
+  setText(statusElement, "Stopping…");
+  const response = await chrome.runtime.sendMessage({ type: "PAIDPOLITELY_STOP" });
+  const result = isRecord(response) ? response : {};
+
+  if (result.ok === false) {
+    setText(statusElement, `Stop error: ${String(result.error ?? "unknown")}`);
   } else {
     await refresh();
   }

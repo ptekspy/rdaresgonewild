@@ -8,31 +8,44 @@
       h1 { font-size: 16px; margin: 0 0 8px; }
       .card { border: 1px solid #3d2a42; border-radius: 10px; padding: 10px; background: #211724; margin: 10px 0; }
       .label { color: #c9b8ce; font-size: 12px; }
-      .check { display: flex; gap: 8px; align-items: flex-start; }
-      .check input { margin-top: 3px; }
-      button { padding: 8px 10px; border: 0; border-radius: 8px; background: #ff7a18; color: #160b11; font-weight: 800; cursor: pointer; margin-right: 6px; }
+      .check { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
+      .check input { width: auto; margin-top: 2px; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      button { padding: 8px 10px; border: 0; border-radius: 8px; background: #ff7a18; color: #160b11; font-weight: 800; cursor: pointer; }
       button.secondary { background: #3d2a42; color: #f7eff8; }
+      button.danger { background: #ff3b57; color: #fff; }
       code { overflow-wrap: anywhere; }
+      small { color: #c9b8ce; }
     </style>
   </head>
   <body>
     <h1>PaidPolitely Worker</h1>
+
     <div class="card">
       <div class="label">Status</div>
       <div id="status">Loading…</div>
     </div>
+
     <div class="card">
       <div class="label">Last task</div>
       <code id="lastTask">—</code>
     </div>
+
     <div class="card">
-      <label class="check" for="forceMainQueue">
+      <label class="check">
         <input id="forceMainQueue" type="checkbox" />
-        <span>Force next run from Home + core 10</span>
+        <span>
+          Force next run from Home + core 10<br />
+          <small>Starts the ordered home/core batch ahead of DB-discovered subreddits.</small>
+        </span>
       </label>
     </div>
-    <button id="runNow">Run now</button>
-    <button id="options" class="secondary">Options</button>
+
+    <div class="actions">
+      <button id="runNow">Run now</button>
+      <button id="stop" class="danger">Stop</button>
+      <button id="options" class="secondary">Options</button>
+    </div>
 
     <script type="module" src="popup.js"></script>
   </body>

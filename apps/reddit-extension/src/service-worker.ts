@@ -30,27 +30,54 @@ interface NextTaskResponse {
   retryAfterMs?: number;
 }
 
-interface IngestResponse {
-  after: string | null;
-  shouldContinue: boolean;
+interface HtmlIngestResponse {
+  batchIndex: number;
+  batchCount: number;
   exhausted: boolean;
   reachedKnown: boolean;
   pagesScanned: number;
   rawPostsSeen: number;
   postsProcessed: number;
   completionsFound: number;
+  shouldContinue: boolean;
+  stopped: boolean;
 }
 
-interface ScrapedListing {
-  data: {
-    children: Array<{ data: Record<string, unknown> }>;
-    after: null;
-    before: null;
-  };
+interface CapturedPost {
+  redditId: string;
+  html: string;
+  subreddit: string;
+  authorUsername: string;
+  title: string;
+  selftext: string;
+  flair: string | null;
+  score: number;
+  upvoteCount: number | null;
+  upvoteRatio: number | null;
+  commentCount: number;
+  shareCount: number | null;
+  crosspostCount: number;
+  mediaUrls: string[];
+  imageUrls: string[];
+  outboundUrl: string | null;
+  thumbnailUrl: string | null;
+  permalink: string;
+  createdAtReddit: string;
+}
+
+interface CaptureResult {
+  posts: CapturedPost[];
+  stopped: boolean;
+  reason: string;
+  scrolls: number;
+  height: number;
 }
 
 const ALARM_NAME = "paidpolitely-extension-worker";
-const CLIENT_VERSION = "0.3.0-force-order-lazyload";
+const CLIENT_VERSION = "0.3.0-html-bulk-stop";
+const MAX_POSTS_PER_BATCH = 450;
+const MAX_BATCH_BYTES = 7_500_000;
+const MAX_HTML_CHARS_PER_POST = 25_000;
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
   apiBaseUrl: "http://localhost:8787",
@@ -60,6 +87,9 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
 };
 
 let running = false;
+let stopRequested = false;
+let activeTabId: number | undefined;
+let activeTaskId: string | undefined;
 
 chrome.runtime.onInstalled.addListener(() => {
   void initialise();
@@ -79,6 +109,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (typed.type === "PAIDPOLITELY_STOP") {
+    void stopCurrentRun()
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: getErrorMessage(error) }));
+    return true;
+  }
+
   return undefined;
 });
 
@@ -91,8 +128,13 @@ async function initialise() {
 
 async function runOnce() {
   if (running) return "already-running";
+
   running = true;
+  stopRequested = false;
+  activeTaskId = undefined;
+  activeTabId = undefined;
   chrome.action.setBadgeText({ text: "…" });
+  await chrome.storage.local.set({ stopRequested: false });
 
   try {
     const settings = await getSettings();
@@ -107,7 +149,6 @@ async function runOnce() {
     schedule(settings.pollSeconds);
 
     const forceMainQueue = settings.forceMainQueue;
-
     const next = await fetchJson<NextTaskResponse>(settings, "/api/extension/task/next", {
       method: "POST",
       body: {
@@ -117,7 +158,7 @@ async function runOnce() {
       },
     });
 
-    if (forceMainQueue) {
+    if (forceMainQueue && !next.task) {
       await chrome.storage.local.set({ forceMainQueue: false });
     }
 
@@ -127,13 +168,21 @@ async function runOnce() {
       return "idle";
     }
 
-    await setStatus("running", `${forceMainQueue ? "Forced core batch queued. " : ""}Browsing ${next.task.type}:${next.task.target}`);
+    activeTaskId = next.task.id;
+    await setStatus("running", `${forceMainQueue ? "Forced core batch. " : ""}Browsing ${next.task.type}:${next.task.target}`);
     await saveLastTask(next.task);
 
     const tabId = await browseTaskUrl(settings, next.task);
+    activeTabId = tabId;
     await waitForTabComplete(tabId, 30_000).catch(() => undefined);
 
-    const result = await processTaskByScrapingPage(settings, next.task, tabId);
+    const result = await processTaskByHtmlCapture(settings, next.task, tabId);
+
+    if (forceMainQueue && result.exhausted) {
+      // The API keeps forced jobs ahead of DB-discovered subs until the batch is consumed.
+      // The checkbox is a one-shot trigger, so clear after a successful forced claim/run.
+      await chrome.storage.local.set({ forceMainQueue: false });
+    }
 
     await fetchJson(settings, `/api/extension/task/${encodeURIComponent(next.task.id)}/complete`, {
       method: "POST",
@@ -143,35 +192,108 @@ async function runOnce() {
       },
     });
 
-    await setStatus("complete", `Completed ${next.task.target}; scraped=${result.rawPostsSeen}; imported=${result.postsProcessed}`);
+    if (result.stopped) {
+      await setStatus("stopped", `Stopped ${next.task.target}; imported=${result.postsProcessed}; scraped=${result.rawPostsSeen}`);
+      chrome.action.setBadgeText({ text: "stop" });
+      return "stopped";
+    }
+
+    await setStatus("complete", `Completed ${next.task.target}; imported=${result.postsProcessed}; scraped=${result.rawPostsSeen}`);
     chrome.action.setBadgeText({ text: "ok" });
     return "complete";
   } catch (error) {
     const message = getErrorMessage(error);
     await setStatus("error", message);
     chrome.action.setBadgeText({ text: "err" });
+
+    if (activeTaskId) {
+      const settings = await getSettings().catch(() => undefined);
+      if (settings) {
+        await fetchJson(settings, `/api/extension/task/${encodeURIComponent(activeTaskId)}/complete`, {
+          method: "POST",
+          body: { error: message },
+        }).catch(() => undefined);
+      }
+    }
+
     throw error;
   } finally {
     running = false;
+    activeTaskId = undefined;
+    activeTabId = undefined;
   }
 }
 
-async function processTaskByScrapingPage(settings: ExtensionSettings, task: ExtensionTask, tabId: number) {
-  const listing = await scrollAndScrapeListing(tabId, task);
+async function stopCurrentRun() {
+  stopRequested = true;
+  await chrome.storage.local.set({ stopRequested: true });
+  await setStatus("stopping", "Stop requested. Finishing the current safe checkpoint…");
+  chrome.action.setBadgeText({ text: "stop" });
 
-  const result = await fetchJson<IngestResponse>(settings, `/api/extension/task/${encodeURIComponent(task.id)}/ingest`, {
-    method: "POST",
-    body: {
-      listing,
-      page: 1,
-      sourceUrl: task.url,
-      scrapeMode: "dom-scroll-lazyload",
-    },
-  });
+  if (activeTabId) {
+    await chrome.scripting
+      .executeScript({
+        target: { tabId: activeTabId },
+        func: () => {
+          (window as Window & { __paidPolitelyStop?: boolean }).__paidPolitelyStop = true;
+        },
+      })
+      .catch(() => undefined);
+  }
 
-  await setStatus("running", `Scraped ${listing.data.children.length} loaded posts from ${task.target}; imported=${result.postsProcessed}`);
+  return running ? "stop-requested" : "not-running";
+}
 
-  return result;
+async function processTaskByHtmlCapture(settings: ExtensionSettings, task: ExtensionTask, tabId: number) {
+  await setStatus("running", `Scrolling ${task.target} until lazy-load stops…`);
+  const capture = await scrollAndCapturePosts(tabId, task);
+  const batches = makePostBatches(capture.posts);
+
+  let lastResult: HtmlIngestResponse = {
+    batchIndex: 0,
+    batchCount: batches.length || 1,
+    exhausted: true,
+    reachedKnown: false,
+    pagesScanned: 0,
+    rawPostsSeen: 0,
+    postsProcessed: 0,
+    completionsFound: 0,
+    shouldContinue: false,
+    stopped: capture.stopped,
+  };
+
+  if (batches.length === 0) {
+    throw new Error(`HTML capture found 0 posts (${capture.reason})`);
+  }
+
+  for (let index = 0; index < batches.length; index++) {
+    if (stopRequested && index > 0) break;
+
+    await setStatus("running", `Uploading ${task.target}; batch ${index + 1}/${batches.length}; posts=${batches[index].length}`);
+
+    lastResult = await fetchJson<HtmlIngestResponse>(settings, `/api/extension/task/${encodeURIComponent(task.id)}/ingest-html`, {
+      method: "POST",
+      body: {
+        sourceUrl: task.url,
+        scrapeMode: "post-card-html",
+        batchIndex: index,
+        batchCount: batches.length,
+        stopped: capture.stopped || stopRequested,
+        posts: batches[index],
+      },
+    });
+  }
+
+  await setStatus(
+    capture.stopped || stopRequested ? "stopped" : "running",
+    `${capture.stopped || stopRequested ? "Stopped" : "Captured"} ${capture.posts.length} posts from ${task.target}; reason=${capture.reason}; scrolls=${capture.scrolls}`,
+  );
+
+  return {
+    ...lastResult,
+    stopped: capture.stopped || stopRequested,
+    exhausted: true,
+  };
 }
 
 async function browseTaskUrl(settings: ExtensionSettings, task: ExtensionTask) {
@@ -231,19 +353,31 @@ async function waitForTabComplete(tabId: number, timeoutMs: number) {
   });
 }
 
-async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promise<ScrapedListing> {
-  // This is a hard safety cap, not the stop condition. The actual stop condition is lazy-load exhaustion:
-  // no new posts, no document-height growth, and the viewport is pinned at the bottom for repeated checks.
-  const maxWallTimeMs = Math.max(180_000, Math.min(900_000, task.maxPages * 180_000));
-  const stableRoundsNeeded = Math.max(10, Math.min(28, task.maxPages * 7));
+async function scrollAndCapturePosts(tabId: number, task: ExtensionTask): Promise<CaptureResult> {
+  const maxRuntimeMs = Math.max(120_000, Math.min(900_000, task.maxPages * 180_000));
+  const maxScrolls = Math.max(150, Math.min(1200, task.maxPages * 250));
+  const idlePostRoundsLimit = 16;
+  const heightStableRoundsLimit = 10;
+  const bottomRoundsLimit = 8;
 
-  const [injection] = await chrome.scripting.executeScript<ScrapedListing>({
+  const [injection] = await chrome.scripting.executeScript<CaptureResult>({
     target: { tabId },
-    args: [task, maxWallTimeMs, stableRoundsNeeded],
-    func: async (injectedTask: ExtensionTask, maxRuntimeMs: number, stableRoundsRequired: number) => {
-      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-      const posts = new Map<string, Record<string, unknown>>();
+    args: [task, maxRuntimeMs, maxScrolls, idlePostRoundsLimit, heightStableRoundsLimit, bottomRoundsLimit, MAX_HTML_CHARS_PER_POST],
+    func: async (
+      injectedTask: ExtensionTask,
+      runtimeLimitMs: number,
+      scrollLimit: number,
+      idleLimit: number,
+      heightStableLimit: number,
+      bottomLimit: number,
+      maxHtmlChars: number,
+    ) => {
+      const pageWindow = window as Window & { __paidPolitelyStop?: boolean };
+      pageWindow.__paidPolitelyStop = false;
 
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const startedAt = Date.now();
+      const posts = new Map<string, CapturedPost>();
       const clean = (value: string | null | undefined) => (value ?? "").replace(/\s+/g, " ").trim();
 
       const absoluteUrl = (href: string | null | undefined) => {
@@ -255,20 +389,9 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
         }
       };
 
-      const idFromPermalink = (href: string) => {
-        const match = href.match(/\/comments\/([A-Za-z0-9_]+)/i);
-        return match?.[1] ?? "";
-      };
-
-      const usernameFromHref = (href: string) => {
-        const match = href.match(/\/(?:user|u)\/([^/?#]+)/i);
-        return match?.[1]?.replace(/[^A-Za-z0-9_-]/g, "") ?? "";
-      };
-
-      const subredditFromHref = (href: string) => {
-        const match = href.match(/\/r\/([^/?#]+)/i);
-        return match?.[1] ?? "";
-      };
+      const idFromPermalink = (href: string) => href.match(/\/comments\/([A-Za-z0-9_]+)/i)?.[1] ?? "";
+      const usernameFromHref = (href: string) => href.match(/\/(?:user|u)\/([^/?#]+)/i)?.[1]?.replace(/[^A-Za-z0-9_-]/g, "") ?? "";
+      const subredditFromHref = (href: string) => href.match(/\/r\/([^/?#]+)/i)?.[1] ?? "";
 
       const numberFromText = (text: string) => {
         const normalised = text.toLowerCase().replace(/,/g, "");
@@ -277,7 +400,7 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
         const n = Number(match[1]);
         if (!Number.isFinite(n)) return 0;
         if (match[2] === "k") return Math.round(n * 1000);
-        if (match[2] === "m") return Math.round(n * 1000000);
+        if (match[2] === "m") return Math.round(n * 1_000_000);
         return Math.round(n);
       };
 
@@ -301,7 +424,6 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
       const findPermalink = (root: Element) => {
         const attr = getAttr(root, ["permalink", "content-href"]);
         if (attr.includes("/comments/")) return absoluteUrl(attr);
-
         const link = root.querySelector<HTMLAnchorElement>('a[href*="/comments/"]');
         return absoluteUrl(link?.getAttribute("href"));
       };
@@ -309,7 +431,6 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
       const findAuthor = (root: Element) => {
         const attr = getAttr(root, ["author"]);
         if (attr) return attr.replace(/^u\//i, "");
-
         const link = root.querySelector<HTMLAnchorElement>('a[href*="/user/"], a[href*="/u/"]');
         return usernameFromHref(link?.href ?? link?.getAttribute("href") ?? "");
       };
@@ -317,70 +438,62 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
       const findSubreddit = (root: Element, permalink: string) => {
         const attr = getAttr(root, ["subreddit-prefixed-name", "subreddit"]);
         if (attr) return attr.replace(/^r\//i, "");
-
         const link = root.querySelector<HTMLAnchorElement>('a[href*="/r/"]');
         const fromLink = subredditFromHref(link?.href ?? link?.getAttribute("href") ?? "");
         if (fromLink) return fromLink;
-
         const fromPermalink = subredditFromHref(permalink);
         if (fromPermalink) return fromPermalink;
-
         return injectedTask.subreddit ?? "home";
       };
 
-      const findCreatedUtc = (root: Element) => {
+      const findCreatedAt = (root: Element) => {
         const time = root.querySelector<HTMLTimeElement>("time[datetime]");
         const datetime = time?.getAttribute("datetime");
-        if (datetime) {
-          const parsed = Date.parse(datetime);
-          if (Number.isFinite(parsed)) return Math.floor(parsed / 1000);
-        }
+        if (datetime && Number.isFinite(Date.parse(datetime))) return new Date(Date.parse(datetime)).toISOString();
 
         const faceplate = root.querySelector("faceplate-timeago[ts]");
         const ts = faceplate?.getAttribute("ts");
-        if (ts) {
-          const parsed = Date.parse(ts);
-          if (Number.isFinite(parsed)) return Math.floor(parsed / 1000);
-        }
+        if (ts && Number.isFinite(Date.parse(ts))) return new Date(Date.parse(ts)).toISOString();
 
         const created = getAttr(root, ["created-timestamp", "created-utc"]);
         if (created) {
           const numeric = Number(created);
-          if (Number.isFinite(numeric)) return numeric > 10_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
-          const parsed = Date.parse(created);
-          if (Number.isFinite(parsed)) return Math.floor(parsed / 1000);
+          if (Number.isFinite(numeric)) return new Date(numeric > 10_000_000_000 ? numeric : numeric * 1000).toISOString();
+          if (Number.isFinite(Date.parse(created))) return new Date(Date.parse(created)).toISOString();
         }
 
-        return Math.floor(Date.now() / 1000);
+        return new Date().toISOString();
       };
 
-      const findImages = (root: Element) => {
-        const urls = new Set<string>();
+      const findMedia = (root: Element) => {
+        const mediaUrls = new Set<string>();
+        const imageUrls = new Set<string>();
 
         for (const img of Array.from(root.querySelectorAll<HTMLImageElement>("img[src]"))) {
           const src = absoluteUrl(img.currentSrc || img.src || img.getAttribute("src"));
           if (!src) continue;
           if (/avatar|emoji|icon|snoovatar/i.test(src)) continue;
-          urls.add(src);
+          imageUrls.add(src);
+          mediaUrls.add(src);
         }
 
         for (const source of Array.from(root.querySelectorAll<HTMLSourceElement>("source[src]"))) {
           const src = absoluteUrl(source.src || source.getAttribute("src"));
-          if (src) urls.add(src);
+          if (src) mediaUrls.add(src);
         }
 
         for (const video of Array.from(root.querySelectorAll<HTMLVideoElement>("video[src]"))) {
           const src = absoluteUrl(video.src || video.getAttribute("src"));
-          if (src) urls.add(src);
+          if (src) mediaUrls.add(src);
         }
 
-        return [...urls];
+        return { mediaUrls: [...mediaUrls], imageUrls: [...imageUrls] };
       };
 
-      const extractPost = (root: Element) => {
+      const extractPost = (root: Element): CapturedPost | null => {
         const permalink = findPermalink(root);
-        const id = getAttr(root, ["post-id", "thingid", "data-fullname"]).replace(/^t3_/i, "") || idFromPermalink(permalink);
-        if (!id) return null;
+        const redditId = getAttr(root, ["post-id", "thingid", "data-fullname"]).replace(/^t3_/i, "") || idFromPermalink(permalink);
+        if (!redditId) return null;
 
         const title =
           getAttr(root, ["post-title", "aria-label"]) ||
@@ -393,61 +506,41 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
             "h3",
             "a[id^='post-title']",
           ]);
-
         if (!title) return null;
 
-        const author = findAuthor(root);
-        if (!/^[A-Za-z0-9_-]{3,20}$/.test(author)) return null;
+        const authorUsername = findAuthor(root);
+        if (!/^[A-Za-z0-9_-]{3,20}$/.test(authorUsername)) return null;
 
         const subreddit = findSubreddit(root, permalink);
-        const flair = getText(root, [
-          '[data-testid="post-flair"]',
-          '[slot="flair"]',
-          "shreddit-post-flair",
-          ".flair",
-        ]);
+        if (!/^[A-Za-z0-9][A-Za-z0-9_]{2,30}$/.test(subreddit)) return null;
 
-        const mediaUrls = findImages(root);
-        const scoreText =
-          getAttr(root, ["score"]) ||
-          getText(root, ["[score]", "[data-testid='post-vote-count']", "shreddit-score", "[aria-label*='upvote']"]);
-        const commentText = getText(root, [
-          'a[href*="/comments/"] span',
-          '[data-testid="comment-count"]',
-          '[aria-label*="comment"]',
-        ]);
+        const flair = getText(root, ['[data-testid="post-flair"]', '[slot="flair"]', "shreddit-post-flair", ".flair"]);
+        const selftext = getText(root, ['[slot="text-body"]', '[data-testid="post-content"]', "shreddit-post [slot='text-body']"]);
+        const scoreText = getAttr(root, ["score"]) || getText(root, ["[score]", "[data-testid='post-vote-count']", "shreddit-score", "[aria-label*='upvote']"]);
+        const commentText = getText(root, ['a[href*="/comments/"] span', '[data-testid="comment-count"]', '[aria-label*="comment"]']);
+        const { mediaUrls, imageUrls } = findMedia(root);
+        const html = root.outerHTML.slice(0, maxHtmlChars);
 
         return {
-          id,
-          name: `t3_${id}`,
+          redditId,
+          html,
           subreddit,
+          authorUsername,
           title,
-          selftext: "",
-          author,
-          link_flair_text: flair || null,
+          selftext,
+          flair: flair || null,
           score: numberFromText(scoreText),
-          ups: numberFromText(scoreText),
-          upvote_ratio: null,
-          num_comments: numberFromText(commentText),
-          share_count: null,
-          num_crossposts: 0,
-          url: mediaUrls[0] ?? permalink,
-          url_overridden_by_dest: mediaUrls[0] ?? permalink,
-          thumbnail: mediaUrls[0] ?? "",
-          preview: mediaUrls.length
-            ? {
-                images: [
-                  {
-                    source: { url: mediaUrls[0] },
-                    resolutions: mediaUrls.slice(1).map((url) => ({ url })),
-                  },
-                ],
-              }
-            : undefined,
-          media: null,
-          secure_media: null,
+          upvoteCount: numberFromText(scoreText) || null,
+          upvoteRatio: null,
+          commentCount: numberFromText(commentText),
+          shareCount: null,
+          crosspostCount: 0,
+          mediaUrls,
+          imageUrls,
+          outboundUrl: mediaUrls[0] ?? permalink,
+          thumbnailUrl: imageUrls[0] ?? null,
           permalink,
-          created_utc: findCreatedUtc(root),
+          createdAtReddit: findCreatedAt(root),
         };
       };
 
@@ -460,88 +553,99 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
 
         for (const root of roots) {
           const post = extractPost(root);
-          if (post) posts.set(String(post.id), post);
+          if (post) posts.set(post.redditId, post);
         }
       };
 
-      const clickLazyLoadButtons = () => {
-        const labels = ["show more", "load more", "retry", "view more", "see more"];
-        const buttons = Array.from(document.querySelectorAll<HTMLButtonElement | HTMLAnchorElement>("button, a"));
-        for (const button of buttons) {
-          const text = clean(button.textContent).toLowerCase();
-          if (!text || !labels.some((label) => text.includes(label))) continue;
-          try {
-            button.click();
-          } catch {
-            // Ignore buttons that Reddit prevents from being clicked.
-          }
+      let reason = "unknown";
+      let scrolls = 0;
+      let lastPostCount = 0;
+      let lastHeight = 0;
+      let idlePostRounds = 0;
+      let heightStableRounds = 0;
+      let bottomRounds = 0;
+
+      while (scrolls < scrollLimit) {
+        if (pageWindow.__paidPolitelyStop) {
+          reason = "stopped";
+          break;
         }
-      };
 
-      let stableRounds = 0;
-      let lastCount = -1;
-      let lastHeight = -1;
-      let lastY = -1;
-      const start = Date.now();
+        if (Date.now() - startedAt > runtimeLimitMs) {
+          reason = "runtime-limit";
+          break;
+        }
 
-      while (Date.now() - start < maxRuntimeMs) {
         harvest();
-        clickLazyLoadButtons();
 
-        const height = Math.max(
-          document.body.scrollHeight,
-          document.documentElement.scrollHeight,
-          document.body.offsetHeight,
-          document.documentElement.offsetHeight,
-        );
-        const y = Math.round(window.scrollY + window.innerHeight);
-        const atBottom = y >= height - 24;
-        const countStable = posts.size === lastCount;
-        const heightStable = Math.abs(height - lastHeight) < 24;
-        const yStable = Math.abs(y - lastY) < 24;
+        const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+        const y = window.scrollY + window.innerHeight;
+        const nearBottom = y >= height - Math.max(500, window.innerHeight * 0.75);
 
-        if (countStable && heightStable && yStable && atBottom) {
-          stableRounds++;
-        } else {
-          stableRounds = 0;
+        if (posts.size <= lastPostCount) idlePostRounds += 1;
+        else idlePostRounds = 0;
+
+        if (height <= lastHeight + 25) heightStableRounds += 1;
+        else heightStableRounds = 0;
+
+        if (nearBottom) bottomRounds += 1;
+        else bottomRounds = 0;
+
+        lastPostCount = posts.size;
+        lastHeight = height;
+
+        if (scrolls > 12 && idlePostRounds >= idleLimit && heightStableRounds >= heightStableLimit && bottomRounds >= bottomLimit) {
+          reason = "lazy-load-exhausted";
+          break;
         }
 
-        if (stableRounds >= stableRoundsRequired) break;
-
-        lastCount = posts.size;
-        lastHeight = height;
-        lastY = y;
-
-        // Prefer jumping near the bottom over tiny fixed passes. This keeps triggering Reddit's virtualized lazy loader
-        // until it genuinely stops adding height/posts.
-        const nextY = Math.max(window.scrollY + window.innerHeight * 0.95, height - window.innerHeight * 1.2);
-        window.scrollTo({ top: nextY, behavior: "smooth" });
-        await sleep(850);
+        window.scrollTo({ top: height, behavior: "auto" });
+        scrolls += 1;
+        await sleep(1200);
       }
 
       harvest();
-      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+
+      if (scrolls >= scrollLimit) reason = "scroll-limit";
+      if (!reason || reason === "unknown") reason = "complete";
 
       return {
-        data: {
-          children: [...posts.values()].map((data) => ({ data })),
-          after: null,
-          before: null,
-        },
+        posts: [...posts.values()],
+        stopped: reason === "stopped",
+        reason,
+        scrolls,
+        height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
       };
     },
   });
 
-  const listing = injection?.result;
-  if (!listing || !Array.isArray(listing.data?.children)) {
-    throw new Error("Page scrape failed: no listing returned");
+  const result = injection?.result;
+  if (!result || !Array.isArray(result.posts)) throw new Error("HTML capture failed: no result returned");
+  return result;
+}
+
+function makePostBatches(posts: CapturedPost[]) {
+  const batches: CapturedPost[][] = [];
+  let current: CapturedPost[] = [];
+  let currentBytes = 0;
+
+  for (const post of posts) {
+    const size = JSON.stringify(post).length;
+    const wouldExceedBytes = current.length > 0 && currentBytes + size > MAX_BATCH_BYTES;
+    const wouldExceedCount = current.length >= MAX_POSTS_PER_BATCH;
+
+    if (wouldExceedBytes || wouldExceedCount) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+
+    current.push(post);
+    currentBytes += size;
   }
 
-  if (listing.data.children.length === 0) {
-    throw new Error("Page scrape found 0 posts");
-  }
-
-  return listing;
+  if (current.length > 0) batches.push(current);
+  return batches;
 }
 
 async function fetchJson<T>(settings: ExtensionSettings, pathname: string, init: { method?: string; body?: unknown } = {}) {
@@ -602,6 +706,7 @@ async function setStatus(status: string, message: string) {
     status,
     statusMessage: message,
     statusUpdatedAt: new Date().toISOString(),
+    running,
   });
 
   chrome.action.setTitle({ title: `PaidPolitely Worker: ${message}` });
