@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PaidPolitely Worker</title>
+    <style>
+      body { width: 340px; font: 13px/1.45 system-ui, sans-serif; margin: 0; padding: 14px; background: #151017; color: #f7eff8; }
+      h1 { font-size: 16px; margin: 0 0 8px; }
+      .card { border: 1px solid #3d2a42; border-radius: 10px; padding: 10px; background: #211724; margin: 10px 0; }
+      .label { color: #c9b8ce; font-size: 12px; }
+      button { padding: 8px 10px; border: 0; border-radius: 8px; background: #ff7a18; color: #160b11; font-weight: 800; cursor: pointer; margin-right: 6px; }
+      button.secondary { background: #3d2a42; color: #f7eff8; }
+      code { overflow-wrap: anywhere; }
+    </style>
+  </head>
+  <body>
+    <h1>PaidPolitely Worker</h1>
+    <div class="card">
+      <div class="label">Status</div>
+      <div id="status">Loading…</div>
+    </div>
+    <div class="card">
+      <div class="label">Last task</div>
+      <code id="lastTask">—</code>
+    </div>
+    <button id="runNow">Run now</button>
+    <button id="options" class="secondary">Options</button>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

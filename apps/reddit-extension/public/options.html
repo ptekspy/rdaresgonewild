@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PaidPolitely Worker Options</title>
+    <style>
+      body { font: 14px/1.45 system-ui, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; background: #151017; color: #f7eff8; }
+      label { display: block; margin: 16px 0 6px; font-weight: 700; }
+      input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #4c344f; background: #241827; color: #fff; }
+      button { margin-top: 18px; padding: 10px 14px; border: 0; border-radius: 8px; background: #ff7a18; color: #160b11; font-weight: 800; cursor: pointer; }
+      .hint { color: #c9b8ce; font-size: 13px; }
+      .status { margin-top: 12px; min-height: 20px; color: #ffd39a; }
+    </style>
+  </head>
+  <body>
+    <h1>PaidPolitely Reddit Worker</h1>
+    <p class="hint">Use the local API while developing. The extension asks this API for one Reddit task at a time.</p>
+
+    <label for="apiBaseUrl">API base URL</label>
+    <input id="apiBaseUrl" placeholder="http://localhost:8787" />
+
+    <label for="pollSeconds">Poll interval when idle, seconds</label>
+    <input id="pollSeconds" type="number" min="10" step="5" />
+
+    <button id="save">Save</button>
+    <p id="status" class="status"></p>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

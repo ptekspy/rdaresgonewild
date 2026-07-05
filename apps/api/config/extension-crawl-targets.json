@@ -1,0 +1,34 @@
+{
+  "coreSubreddits": [
+    "daresgonewild",
+    "FlashingAndFlaunting",
+    "RealPublicNudity",
+    "ExhibitionistGirl",
+    "ChanginginPublic",
+    "CMNF",
+    "onlyonenaked",
+    "outdoorgirls",
+    "Permanent_Nude",
+    "BralessForever"
+  ],
+  "coreSorts": ["best", "new"],
+  "homeSorts": ["best", "new"],
+  "includeDbSubreddits": true,
+  "intervalMinutes": {
+    "homeNew": 60,
+    "homeBest": 360,
+    "coreNew": 60,
+    "coreBest": 360,
+    "otherNew": 720,
+    "otherBest": 1440,
+    "userFallback": 1440
+  },
+  "maxPages": {
+    "home": 3,
+    "coreSubreddit": 3,
+    "otherSubreddit": 2,
+    "userFallback": 2
+  },
+  "fallbackUserBatchSize": 20,
+  "queueUsersPerCompletedTask": 40
+}

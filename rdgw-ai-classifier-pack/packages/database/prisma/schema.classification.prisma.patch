@@ -1,0 +1,57 @@
+diff --git a/packages/database/prisma/schema.prisma b/packages/database/prisma/schema.prisma
+--- a/packages/database/prisma/schema.prisma
++++ b/packages/database/prisma/schema.prisma
+@@
+ model DgwUser {
+   id             String    @id @default(cuid())
+   username       String    @unique
+   /// never | syncing | fresh | stale
+   syncStatus     String    @default("never")
+@@
+   posts                DgwPost[]
+   playbookCompletions  PlaybookCompletion[]
+   communityCompletions CommunityCompletion[]
++  classification       DgwUserClassification?
+ 
+   @@index([syncStatus])
+   @@index([lastSyncedAt])
+ }
++
++enum ModelClassificationStatus {
++  NEVER
++  QUEUED
++  RUNNING
++  COMPLETE
++  FAILED
++}
++
++model DgwUserClassification {
++  id          String                    @id @default(cuid())
++  username    String                    @unique
++  user        DgwUser                   @relation(fields: [username], references: [username], onDelete: Cascade)
++
++  status      ModelClassificationStatus @default(NEVER)
++
++  primaryType String?
++  categories  String[]                  @default([])
++  confidence  Float?
++  summary     String?
++  notes       String?
++
++  ollamaModel String?
++  rawResult   Json?
++
++  requestedAt DateTime?
++  startedAt   DateTime?
++  completedAt DateTime?
++  failedAt    DateTime?
++  error       String?
++
++  createdAt   DateTime                  @default(now())
++  updatedAt   DateTime                  @updatedAt
++
++  @@index([status])
++  @@index([completedAt])
++}
+ 
+ // ─── Completions ──────────────────────────────────────────────────────────────
