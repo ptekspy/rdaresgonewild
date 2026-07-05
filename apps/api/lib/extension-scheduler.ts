@@ -870,7 +870,7 @@ function readListingFromBody(body: unknown): RedditListing {
     throw new ExtensionTaskError("Body must contain a Reddit listing JSON object", 400);
   }
 
-  return listing as RedditListing;
+  return listing as unknown as RedditListing;
 }
 
 function readObject(value: unknown): Record<string, unknown> {
