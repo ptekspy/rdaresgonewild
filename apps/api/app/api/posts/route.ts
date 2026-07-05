@@ -103,7 +103,8 @@ function addStringInFilter(
   values: string[],
 ) {
   if (values.length === 0) return;
-  where[field] = values.length === 1 ? values[0] : { in: values };
+
+  (where as Record<string, unknown>)[field] = values.length === 1 ? values[0] : { in: values };
 }
 
 export function OPTIONS() {
@@ -135,9 +136,13 @@ export async function GET(request: NextRequest) {
     const subreddits = parseCsvParam(searchParams, "subreddit").map(normaliseSubreddit);
     addStringInFilter(where, "subreddit", subreddits);
 
-    addStringInFilter(where, "authorUsername", parseCsvParam(searchParams, "author"));
-    addStringInFilter(where, "flair", parseCsvParam(searchParams, "flair"));
-    addStringInFilter(where, "source", parseCsvParam(searchParams, "source"));
+    const authors = parseCsvParam(searchParams, "author");
+    const flairs = parseCsvParam(searchParams, "flair");
+    const sources = parseCsvParam(searchParams, "source");
+
+    addStringInFilter(where, "authorUsername", authors);
+    addStringInFilter(where, "flair", flairs);
+    addStringInFilter(where, "source", sources);
 
     const q = searchParams.get("q")?.trim();
     if (q) {
@@ -190,10 +195,10 @@ export async function GET(request: NextRequest) {
     }
 
     const sortField = SORT_FIELDS[sort as keyof typeof SORT_FIELDS];
-    const orderBy = [
-      { [sortField]: order },
+    const orderBy: Prisma.DgwPostOrderByWithRelationInput[] = [
+      { [sortField]: order } as Prisma.DgwPostOrderByWithRelationInput,
       { id: "asc" },
-    ] satisfies Prisma.DgwPostOrderByWithRelationInput[];
+    ];
 
     const [total, posts] = await prisma.$transaction([
       prisma.dgwPost.count({ where }),
@@ -247,9 +252,9 @@ export async function GET(request: NextRequest) {
         order,
         filters: {
           subreddit: subreddits,
-          author: parseCsvParam(searchParams, "author"),
-          flair: parseCsvParam(searchParams, "flair"),
-          source: parseCsvParam(searchParams, "source"),
+          author: authors,
+          flair: flairs,
+          source: sources,
           q,
           from: from?.toISOString(),
           to: to?.toISOString(),
