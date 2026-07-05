@@ -13,7 +13,7 @@
   ],
   "coreSorts": ["best", "new"],
   "homeSorts": ["best", "new"],
-  "includeDbSubreddits": true,
+  "includeDbSubreddits": false,
   "intervalMinutes": {
     "homeNew": 60,
     "homeBest": 360,

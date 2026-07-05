@@ -36,7 +36,7 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function prismaOptions() {
   const options: ConstructorParameters<typeof PrismaClient>[0] = {
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: process.env.PRISMA_LOG_QUERIES === "true" ? ["query", "error", "warn"] : ["error", "warn"],
   };
 
   if (process.env.DATABASE_DRIVER === "neon") {
@@ -55,7 +55,7 @@ function prismaOptions() {
 
 export function createNeonPrismaClient(connectionString: string) {
   return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: process.env.PRISMA_LOG_QUERIES === "true" ? ["query", "error", "warn"] : ["error", "warn"],
     adapter: new PrismaNeon({ connectionString }),
   });
 }
