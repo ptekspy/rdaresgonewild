@@ -50,7 +50,7 @@ interface ScrapedListing {
 }
 
 const ALARM_NAME = "paidpolitely-extension-worker";
-const CLIENT_VERSION = "0.2.0-scroll-scrape";
+const CLIENT_VERSION = "0.3.0-force-order-lazyload";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
   apiBaseUrl: "http://localhost:8787",
@@ -127,10 +127,7 @@ async function runOnce() {
       return "idle";
     }
 
-    await setStatus(
-      "running",
-      `${forceMainQueue ? "Forced core start. " : ""}Browsing ${next.task.type}:${next.task.target}`,
-    );
+    await setStatus("running", `${forceMainQueue ? "Forced core batch queued. " : ""}Browsing ${next.task.type}:${next.task.target}`);
     await saveLastTask(next.task);
 
     const tabId = await browseTaskUrl(settings, next.task);
@@ -168,14 +165,11 @@ async function processTaskByScrapingPage(settings: ExtensionSettings, task: Exte
       listing,
       page: 1,
       sourceUrl: task.url,
-      scrapeMode: "dom-scroll",
+      scrapeMode: "dom-scroll-lazyload",
     },
   });
 
-  await setStatus(
-    "running",
-    `Scraped ${listing.data.children.length} loaded posts from ${task.target}; imported=${result.postsProcessed}`,
-  );
+  await setStatus("running", `Scraped ${listing.data.children.length} loaded posts from ${task.target}; imported=${result.postsProcessed}`);
 
   return result;
 }
@@ -238,13 +232,15 @@ async function waitForTabComplete(tabId: number, timeoutMs: number) {
 }
 
 async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promise<ScrapedListing> {
-  const scrollPasses = Math.max(60, Math.min(220, task.maxPages * 60));
-  const idleRounds = Math.max(12, Math.min(30, task.maxPages * 7));
+  // This is a hard safety cap, not the stop condition. The actual stop condition is lazy-load exhaustion:
+  // no new posts, no document-height growth, and the viewport is pinned at the bottom for repeated checks.
+  const maxWallTimeMs = Math.max(180_000, Math.min(900_000, task.maxPages * 180_000));
+  const stableRoundsNeeded = Math.max(10, Math.min(28, task.maxPages * 7));
 
   const [injection] = await chrome.scripting.executeScript<ScrapedListing>({
     target: { tabId },
-    args: [task, scrollPasses, idleRounds],
-    func: async (injectedTask: ExtensionTask, maxScrollPasses: number, maxIdleRounds: number) => {
+    args: [task, maxWallTimeMs, stableRoundsNeeded],
+    func: async (injectedTask: ExtensionTask, maxRuntimeMs: number, stableRoundsRequired: number) => {
       const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
       const posts = new Map<string, Record<string, unknown>>();
 
@@ -468,30 +464,63 @@ async function scrollAndScrapeListing(tabId: number, task: ExtensionTask): Promi
         }
       };
 
-      let idleRounds = 0;
-      let lastCount = 0;
+      const clickLazyLoadButtons = () => {
+        const labels = ["show more", "load more", "retry", "view more", "see more"];
+        const buttons = Array.from(document.querySelectorAll<HTMLButtonElement | HTMLAnchorElement>("button, a"));
+        for (const button of buttons) {
+          const text = clean(button.textContent).toLowerCase();
+          if (!text || !labels.some((label) => text.includes(label))) continue;
+          try {
+            button.click();
+          } catch {
+            // Ignore buttons that Reddit prevents from being clicked.
+          }
+        }
+      };
 
-      for (let i = 0; i < maxScrollPasses; i++) {
+      let stableRounds = 0;
+      let lastCount = -1;
+      let lastHeight = -1;
+      let lastY = -1;
+      const start = Date.now();
+
+      while (Date.now() - start < maxRuntimeMs) {
         harvest();
+        clickLazyLoadButtons();
 
-        if (posts.size <= lastCount) {
-          idleRounds++;
+        const height = Math.max(
+          document.body.scrollHeight,
+          document.documentElement.scrollHeight,
+          document.body.offsetHeight,
+          document.documentElement.offsetHeight,
+        );
+        const y = Math.round(window.scrollY + window.innerHeight);
+        const atBottom = y >= height - 24;
+        const countStable = posts.size === lastCount;
+        const heightStable = Math.abs(height - lastHeight) < 24;
+        const yStable = Math.abs(y - lastY) < 24;
+
+        if (countStable && heightStable && yStable && atBottom) {
+          stableRounds++;
         } else {
-          idleRounds = 0;
-          lastCount = posts.size;
+          stableRounds = 0;
         }
 
-        if (idleRounds >= maxIdleRounds && i > 15) break;
+        if (stableRounds >= stableRoundsRequired) break;
 
-        window.scrollBy({
-          top: Math.max(window.innerHeight * 0.92, 900),
-          behavior: "smooth",
-        });
+        lastCount = posts.size;
+        lastHeight = height;
+        lastY = y;
 
-        await sleep(650);
+        // Prefer jumping near the bottom over tiny fixed passes. This keeps triggering Reddit's virtualized lazy loader
+        // until it genuinely stops adding height/posts.
+        const nextY = Math.max(window.scrollY + window.innerHeight * 0.95, height - window.innerHeight * 1.2);
+        window.scrollTo({ top: nextY, behavior: "smooth" });
+        await sleep(850);
       }
 
       harvest();
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 
       return {
         data: {

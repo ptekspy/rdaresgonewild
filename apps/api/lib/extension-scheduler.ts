@@ -1,4 +1,4 @@
-import { prisma, type BrowserCrawlJob } from "@rdgw/database";
+import { Prisma, prisma, type BrowserCrawlJob } from "@rdgw/database";
 import { processPost } from "@rdgw/crawler";
 import { normaliseListingPage, type RedditListing, type RedditPost } from "@rdgw/crawler/reddit";
 import fs from "node:fs";
@@ -49,6 +49,9 @@ interface ExtensionJobState {
   lastAfter?: string | null;
   exhausted?: boolean;
   reachedKnown?: boolean;
+  forceBatchId?: string;
+  forceOrder?: number;
+  forceLabel?: string;
 }
 
 export interface ExtensionTaskResponse {
@@ -231,7 +234,7 @@ export async function ingestExtensionListing(jobId: string, body: unknown): Prom
 
   await prisma.browserCrawlJob.update({
     where: { id: job.id },
-    data: { state: nextState },
+    data: { state: toJsonState(nextState) },
   });
 
   const shouldContinue =
@@ -325,7 +328,7 @@ export async function completeExtensionTask(jobId: string, body: unknown) {
       startedAt: null,
       leaseUntil: null,
       lastError: null,
-      state: resetRunState(completedState),
+      state: toJsonState(resetRunState(completedState)),
     },
   });
 
@@ -385,24 +388,44 @@ async function ensureExtensionDueJobs() {
 async function queueCoreBootstrapJobs() {
   const config = loadExtensionTargetsConfig();
   const now = new Date();
-  const definitions: ExtensionJobDefinition[] = [];
+  const forceBatchId = `core-bootstrap:${now.toISOString()}`;
+  const definitions = buildCoreBootstrapDefinitions(config);
 
-  for (const sort of config.homeSorts) {
-    definitions.push(buildHomeJob(sort, config));
-  }
-
-  for (const subreddit of uniqueSubreddits(config.coreSubreddits)) {
-    for (const sort of config.coreSorts) {
-      definitions.push(buildSubredditJob(subreddit, sort, true, config));
-    }
-  }
-
-  for (const definition of definitions) {
-    await forceQueueExtensionJob(definition, now);
+  for (const [index, definition] of definitions.entries()) {
+    await forceQueueExtensionJob(definition, now, forceBatchId, index);
   }
 }
 
-async function forceQueueExtensionJob(definition: ExtensionJobDefinition, scheduledFor: Date) {
+function buildCoreBootstrapDefinitions(config: ExtensionTargetsConfig) {
+  const definitions: ExtensionJobDefinition[] = [];
+  const forcedSorts: ExtensionSort[] = ["best", "new"];
+  const enabledHomeSorts = new Set(config.homeSorts);
+  const enabledCoreSorts = new Set(config.coreSorts);
+
+  // Exact forced order: home best, home new, then each configured core subreddit best/new.
+  for (const sort of forcedSorts) {
+    if (enabledHomeSorts.has(sort)) definitions.push(buildHomeJob(sort, config));
+  }
+
+  for (const subreddit of uniqueSubreddits(config.coreSubreddits)) {
+    for (const sort of forcedSorts) {
+      if (enabledCoreSorts.has(sort)) definitions.push(buildSubredditJob(subreddit, sort, true, config));
+    }
+  }
+
+  return definitions;
+}
+
+async function forceQueueExtensionJob(definition: ExtensionJobDefinition, batchStart: Date, forceBatchId: string, forceOrder: number) {
+  const scheduledFor = new Date(batchStart.getTime() + forceOrder * 1000);
+  const forcedPriority = 100_000 - forceOrder;
+  const state: ExtensionJobState = {
+    ...definition.state,
+    forceBatchId,
+    forceOrder,
+    forceLabel: "home-best-home-new-core-subreddits",
+  };
+
   await prisma.browserCrawlJob.upsert({
     where: { dedupeKey: definition.dedupeKey },
     create: {
@@ -411,25 +434,30 @@ async function forceQueueExtensionJob(definition: ExtensionJobDefinition, schedu
       target: definition.target,
       url: definition.url,
       status: "queued",
-      priority: definition.priority,
+      priority: forcedPriority,
       scheduledFor,
-      state: definition.state,
+      startedAt: null,
+      completedAt: null,
+      leaseUntil: null,
+      lastError: null,
+      state: toJsonState(state),
     },
     update: {
       type: definition.type,
       target: definition.target,
       url: definition.url,
       status: "queued",
-      priority: definition.priority,
+      priority: forcedPriority,
       scheduledFor,
       startedAt: null,
       completedAt: null,
       leaseUntil: null,
       lastError: null,
-      state: definition.state,
+      state: toJsonState(state),
     },
   });
 }
+
 async function recoverExpiredExtensionJobs() {
   await prisma.browserCrawlJob.updateMany({
     where: {
@@ -468,7 +496,7 @@ async function claimQueuedExtensionJob() {
       leaseUntil: new Date(now.getTime() + JOB_LEASE_MS),
       attempts: { increment: 1 },
       lastError: null,
-      state,
+      state: toJsonState(state),
     },
   });
 
@@ -491,7 +519,32 @@ async function ensureRecurringExtensionJob(definition: ExtensionJobDefinition) {
         status: "queued",
         priority: definition.priority,
         scheduledFor: definition.scheduledFor ?? now,
-        state: definition.state,
+        state: toJsonState(definition.state),
+      },
+    });
+    return;
+  }
+
+  const existingState = getExtensionState(existing);
+  const hasActiveForcedBatch = Boolean(
+    existingState.forceBatchId &&
+      ["queued", "running"].includes(existing.status) &&
+      existing.priority >= 90_000,
+  );
+
+  if (hasActiveForcedBatch) {
+    await prisma.browserCrawlJob.update({
+      where: { id: existing.id },
+      data: {
+        type: definition.type,
+        target: definition.target,
+        url: definition.url,
+        state: {
+          ...definition.state,
+          forceBatchId: existingState.forceBatchId,
+          forceOrder: existingState.forceOrder,
+          forceLabel: existingState.forceLabel,
+        },
       },
     });
     return;
@@ -514,9 +567,9 @@ async function ensureRecurringExtensionJob(definition: ExtensionJobDefinition) {
             completedAt: null,
             leaseUntil: null,
             lastError: null,
-            state: definition.state,
+            state: toJsonState(definition.state),
           }
-        : { state: mergeStableState(getExtensionState(existing), definition.state) }),
+        : { state: toJsonState(mergeStableState(getExtensionState(existing), definition.state)) }),
     },
   });
 }
@@ -718,6 +771,9 @@ function getExtensionState(job: BrowserCrawlJob): ExtensionJobState {
       lastAfter: typeof value.lastAfter === "string" || value.lastAfter === null ? value.lastAfter : undefined,
       exhausted: Boolean(value.exhausted),
       reachedKnown: Boolean(value.reachedKnown),
+      forceBatchId: typeof value.forceBatchId === "string" ? value.forceBatchId : undefined,
+      forceOrder: asNonNegativeInteger(value.forceOrder, -1) >= 0 ? asNonNegativeInteger(value.forceOrder, 0) : undefined,
+      forceLabel: typeof value.forceLabel === "string" ? value.forceLabel : undefined,
     };
   }
 
@@ -759,12 +815,47 @@ function resetRunState(state: ExtensionJobState): ExtensionJobState {
     jsonUrl: state.jsonUrl,
     maxPages: state.maxPages,
     stopAtKnown: state.stopAtKnown,
+    forceBatchId: state.forceBatchId,
+    forceOrder: state.forceOrder,
+    forceLabel: state.forceLabel,
   };
 }
 
 function mergeStableState(existing: ExtensionJobState, next: ExtensionJobState): ExtensionJobState {
   const running = Boolean(existing.crawlRunId || existing.pagesScanned || existing.rawPostsSeen);
   return running ? { ...next, ...existing, jsonUrl: next.jsonUrl, maxPages: next.maxPages } : next;
+}
+
+
+function toJsonState(state: ExtensionJobState): Prisma.InputJsonObject {
+  const clean = (value: unknown): Prisma.InputJsonValue | undefined => {
+    if (value === undefined) return undefined;
+
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => clean(item))
+        .filter((item): item is Prisma.InputJsonValue => item !== undefined);
+    }
+
+    if (typeof value === "object") {
+      const output: Record<string, Prisma.InputJsonValue> = {};
+
+      for (const [key, childValue] of Object.entries(value)) {
+        const cleaned = clean(childValue);
+        if (cleaned !== undefined) output[key] = cleaned;
+      }
+
+      return output as Prisma.InputJsonObject;
+    }
+
+    return String(value);
+  };
+
+  return clean(state) as Prisma.InputJsonObject;
 }
 
 function readListingFromBody(body: unknown): RedditListing {
